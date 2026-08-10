@@ -24,3 +24,8 @@ firebase deploy --only hosting
 ```
 
 第一次登入後，進入「更多」，匯入本機 `seoul-private-data.json`。
+
+## v1.1 外觀模式
+- 「更多 → 外觀」提供：自動 / 日間 / 夜間。
+- 預設為「自動」，跟隨裝置的淺色 / 深色模式。
+- 手動選擇會儲存在本機瀏覽器 `localStorage`，不會寫入 Firestore。

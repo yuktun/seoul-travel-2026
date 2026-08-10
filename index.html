@@ -3,12 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#111827" />
+  <meta name="theme-color" content="#f5f6f8" id="themeColorMeta" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="首爾旅遊" />
   <title>首爾旅遊 2026</title>
   <link rel="manifest" href="manifest.webmanifest" />
+  <script>
+    (() => {
+      const pref = localStorage.getItem('themePreference') || 'auto';
+      const dark = pref === 'night' || (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.themePreference = pref;
+      document.documentElement.dataset.theme = dark ? 'night' : 'day';
+      document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+    })();
+  </script>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>

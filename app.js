@@ -28,6 +28,52 @@ let state = { user:null, trip:null, days:[], bookings:[], page:'today' };
 
 const $ = s => document.querySelector(s);
 const content = $('#content');
+const themeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+const THEME_KEY = 'themePreference';
+
+function getThemePreference(){
+  const pref = localStorage.getItem(THEME_KEY);
+  return ['auto','day','night'].includes(pref) ? pref : 'auto';
+}
+
+function effectiveTheme(pref=getThemePreference()){
+  if(pref === 'night') return 'night';
+  if(pref === 'day') return 'day';
+  return themeMedia.matches ? 'night' : 'day';
+}
+
+function applyTheme(pref=getThemePreference()){
+  const effective = effectiveTheme(pref);
+  document.documentElement.dataset.themePreference = pref;
+  document.documentElement.dataset.theme = effective;
+  document.documentElement.style.colorScheme = effective === 'night' ? 'dark' : 'light';
+  const meta = document.querySelector('#themeColorMeta');
+  if(meta) meta.setAttribute('content', effective === 'night' ? '#0b1020' : '#f5f6f8');
+  return effective;
+}
+
+function setThemePreference(pref){
+  if(!['auto','day','night'].includes(pref)) return;
+  localStorage.setItem(THEME_KEY,pref);
+  applyTheme(pref);
+  if(state.page === 'more') renderMore();
+}
+
+function themePreferenceLabel(pref){
+  return ({auto:'自動',day:'日間',night:'夜間'})[pref] || '自動';
+}
+
+function effectiveThemeLabel(theme){
+  return theme === 'night' ? '夜間模式' : '日間模式';
+}
+
+applyTheme();
+themeMedia.addEventListener?.('change',()=>{
+  if(getThemePreference()==='auto'){
+    applyTheme('auto');
+    if(state.page==='more') renderMore();
+  }
+});
 
 function esc(v=''){return String(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function money(n){return new Intl.NumberFormat('zh-HK',{maximumFractionDigits:2}).format(n||0)}
@@ -135,9 +181,19 @@ function renderMoney(){
 
 function renderMore(){
   const trip=state.trip||{};
-  content.innerHTML=`<div class="card"><h2>快速資訊</h2><div class="kv"><div>旅程</div><div>${esc(trip.title||'首爾旅遊 2026')}</div><div>日期</div><div>${esc(trip.dateRange||'2026/8/19–8/23')}</div><div>人數</div><div>${esc(trip.travellers||'4')}</div></div></div>
+  const themePref=getThemePreference();
+  const currentTheme=effectiveTheme(themePref);
+  content.innerHTML=`<div class="card"><h2>外觀</h2><p class="muted small">預設為自動，會跟隨手機或電腦的系統外觀。你亦可以固定使用日間或夜間模式。</p>
+  <div class="theme-options" role="group" aria-label="外觀模式">
+    <button class="theme-choice ${themePref==='auto'?'active':''}" data-theme-pref="auto"><span class="theme-icon">◐</span><span>自動</span><small>跟隨系統</small></button>
+    <button class="theme-choice ${themePref==='day'?'active':''}" data-theme-pref="day"><span class="theme-icon">☀️</span><span>日間</span><small>淺色主題</small></button>
+    <button class="theme-choice ${themePref==='night'?'active':''}" data-theme-pref="night"><span class="theme-icon">🌙</span><span>夜間</span><small>深色主題</small></button>
+  </div>
+  <div class="theme-status">偏好：${themePreferenceLabel(themePref)} · 目前：${effectiveThemeLabel(currentTheme)}</div></div>
+  <div class="card"><h2>快速資訊</h2><div class="kv"><div>旅程</div><div>${esc(trip.title||'首爾旅遊 2026')}</div><div>日期</div><div>${esc(trip.dateRange||'2026/8/19–8/23')}</div><div>人數</div><div>${esc(trip.travellers||'4')}</div></div></div>
   <div class="card"><h2>匯入私人行程資料</h2><p class="muted">選擇由我提供的 <code>seoul-private-data.json</code>。資料會直接寫入你登入帳戶可存取的 Firestore；JSON 不需要上載到 GitHub。</p><label class="file-label">選擇私人 JSON<input id="importFile" type="file" accept="application/json"></label><div id="importStatus" class="small muted" style="margin-top:10px"></div></div>
   <div class="card"><h2>安全提醒</h2><div class="notice good">網站程式碼不包含旅客姓名、電子機票號碼、預訂編號等私人資料；這些資料只會在匯入後存入 Firestore。</div></div>`;
+  document.querySelectorAll('[data-theme-pref]').forEach(btn=>btn.onclick=()=>setThemePreference(btn.dataset.themePref));
   $('#importFile').onchange=importPrivateData;
 }
 
