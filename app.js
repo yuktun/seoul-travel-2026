@@ -27,6 +27,7 @@ await setPersistence(auth, browserLocalPersistence);
 const TRIP_ID = 'seoul-2026';
 let state = { user:null, trip:null, days:[], bookings:[], page:'today', isAdmin:false };
 let stopAccessListener=null;
+let stopApprovalListener=null;
 
 const $ = s => document.querySelector(s);
 const content = $('#content');
@@ -115,6 +116,7 @@ onAuthStateChanged(auth, async user=>{
 });
 
 function clearPrivateState(){
+  stopApprovalListener?.(); stopApprovalListener=null;
   state.trip=null;
   state.days=[];
   state.bookings=[];
@@ -187,6 +189,7 @@ async function loadTrip(){
 }
 
 function render(){
+  if(state.page!=='more'){stopApprovalListener?.();stopApprovalListener=null}
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===state.page));
   const titles={today:'今日',days:'行程',bookings:'預訂',money:'匯率',more:'更多'}; $('#pageTitle').textContent=titles[state.page];
   if(!state.trip && state.page!=='more') return renderEmpty();
@@ -258,7 +261,7 @@ function renderMore(){
   const themePref=getThemePreference();
   const currentTheme=effectiveTheme(themePref);
   const importSection=state.isAdmin?`<div class="card"><h2>匯入私人行程資料</h2><p class="muted">選擇由我提供的 <code>seoul-private-data.json</code>。資料會直接寫入你登入帳戶可存取的 Firestore；JSON 不需要上載到 GitHub。</p><label class="file-label">選擇私人 JSON<input id="importFile" type="file" accept="application/json"></label><div id="importStatus" class="small muted" style="margin-top:10px"></div></div>`:'';
-  content.innerHTML=`${state.isAdmin?'<div class="card"><h2>加入申請</h2><div id="approvalList" class="approval-list"><span class="muted small">正在載入…</span></div></div>':''}<div class="card"><h2>外觀</h2><p class="muted small">預設為自動，會跟隨手機或電腦的系統外觀。你亦可以固定使用日間或夜間模式。</p>
+  content.innerHTML=`${state.isAdmin?'<div class="card"><h2>加入申請</h2><div id="approvalStatus" class="small approval-status" role="status" aria-live="polite"></div><div id="approvalList" class="approval-list"><span class="muted small">正在載入…</span></div></div>':''}<div class="card"><h2>外觀</h2><p class="muted small">預設為自動，會跟隨手機或電腦的系統外觀。你亦可以固定使用日間或夜間模式。</p>
   <div class="theme-options" role="group" aria-label="外觀模式">
     <button class="theme-choice ${themePref==='auto'?'active':''}" data-theme-pref="auto" aria-pressed="${themePref==='auto'}"><span class="theme-icon">◐</span><span>自動</span><small>跟隨系統</small></button>
     <button class="theme-choice ${themePref==='day'?'active':''}" data-theme-pref="day" aria-pressed="${themePref==='day'}"><span class="theme-icon">☀️</span><span>日間</span><small>淺色主題</small></button>
@@ -274,20 +277,30 @@ function renderMore(){
   if(state.isAdmin) renderApprovalRequests();
 }
 
-async function renderApprovalRequests(){
+function renderApprovalRequests(){
+  stopApprovalListener?.(); stopApprovalListener=null;
   const list=$('#approvalList'); if(!list)return;
-  try{
-    const snap=await getDocs(collection(db,'accessRequests'));
+  stopApprovalListener=onSnapshot(collection(db,'accessRequests'),snap=>{
+    const currentList=$('#approvalList');
+    if(!currentList||!state.isAdmin)return;
     const pending=snap.docs.filter(d=>d.data().status==='pending');
-    list.innerHTML=pending.length?pending.map(d=>{const r=d.data();return `<div class="approval-row"><div><strong>${esc(r.displayName||'未有名稱')}</strong><div class="muted small">${esc(r.email||'')}</div></div><button class="primary-btn approve-btn" data-approve="${esc(d.id)}">批准</button></div>`}).join(''):'<div class="notice good">目前沒有等候批准的申請。</div>';
-    document.querySelectorAll('[data-approve]').forEach(btn=>btn.onclick=async()=>{
+    currentList.innerHTML=pending.length?pending.map(d=>{const r=d.data();return `<div class="approval-row"><div><strong>${esc(r.displayName||'未有名稱')}</strong><div class="muted small">${esc(r.email||'')}</div></div><button class="primary-btn approve-btn" data-approve="${esc(d.id)}">批准</button></div>`}).join(''):'<div class="notice good">目前沒有等候批准的申請。</div>';
+    currentList.querySelectorAll('[data-approve]').forEach(btn=>btn.onclick=async()=>{
+      if(!state.isAdmin||!state.user)return;
+      const adminUid=state.user.uid;
       btn.disabled=true; btn.textContent='正在批准…';
       try{
-        await setDoc(doc(db,'accessRequests',btn.dataset.approve),{status:'approved',approvedAt:serverTimestamp(),approvedBy:state.user.uid},{merge:true});
-        await renderApprovalRequests();
-      }catch(e){btn.disabled=false;btn.textContent='再試一次'}
+        await setDoc(doc(db,'accessRequests',btn.dataset.approve),{status:'approved',approvedAt:serverTimestamp(),approvedBy:adminUid},{merge:true});
+        const status=$('#approvalStatus'); if(status){status.textContent='已批准加入申請。';status.classList.remove('error')}
+      }catch(e){
+        btn.disabled=false;btn.textContent='批准';
+        const status=$('#approvalStatus'); if(status){status.textContent='批准失敗，請稍後再試。';status.classList.add('error')}
+      }
     });
-  }catch(e){list.innerHTML='<div class="notice danger">未能載入申請，請檢查 Firestore Rules。</div>'}
+  },()=>{
+    const currentList=$('#approvalList');
+    if(currentList) currentList.innerHTML='<div class="notice danger">未能載入申請，請稍後再試。</div>';
+  });
 }
 
 async function importPrivateData(ev){
