@@ -7,6 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="首爾旅遊" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
   <title>首爾旅遊 2026</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <script>
@@ -66,6 +67,12 @@
       <div class="modal-head"><strong>帳戶</strong><button id="closeProfile" class="icon-btn" aria-label="關閉帳戶資料">✕</button></div>
       <div id="profileInfo"></div>
       <button id="logoutBtn" class="secondary-btn full">登出</button>
+    </dialog>
+
+    <dialog id="installDialog" class="modal">
+      <div class="modal-head"><strong>加入主畫面</strong><button id="closeInstall" class="icon-btn" aria-label="關閉安裝說明">✕</button></div>
+      <div id="installInstructions"></div>
+      <button id="confirmInstallHelp" class="primary-btn full">知道了</button>
     </dialog>
   </div>
 

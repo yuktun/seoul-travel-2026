@@ -28,6 +28,7 @@ const TRIP_ID = 'seoul-2026';
 let state = { user:null, trip:null, days:[], bookings:[], page:'today', isAdmin:false };
 let stopAccessListener=null;
 let stopApprovalListener=null;
+let installPrompt=null;
 
 const $ = s => document.querySelector(s);
 const content = $('#content');
@@ -76,6 +77,15 @@ function handleSystemThemeChange(){
     applyTheme('auto');
     if(state.page==='more') renderMore();
   }
+}
+
+function isStandalone(){
+  return window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+}
+
+function installButtonLabel(){
+  if(isStandalone())return '已加入主畫面';
+  return installPrompt?'安裝旅遊 App':'加入主畫面';
 }
 if(themeMedia.addEventListener) themeMedia.addEventListener('change',handleSystemThemeChange);
 else themeMedia.addListener?.(handleSystemThemeChange);
@@ -270,11 +280,29 @@ function renderMore(){
   <div class="theme-status">偏好：${themePreferenceLabel(themePref)} · 目前：${effectiveThemeLabel(currentTheme)}</div></div>
   <div class="card"><h2>快速資訊</h2><div class="kv"><div>旅程</div><div>${esc(trip.title||'首爾旅遊 2026')}</div><div>日期</div><div>${esc(trip.dateRange||'2026/8/19–8/23')}</div><div>人數</div><div>${esc(trip.travellers||'4')}</div></div></div>
   ${importSection}
-  <div class="card"><h2>安全提醒</h2><div class="notice good">網站程式碼不包含旅客姓名、電子機票號碼、預訂編號等私人資料；這些資料只會在匯入後存入 Firestore。</div></div>`;
+  <div class="card"><h2>安全提醒</h2><div class="notice good">網站程式碼不包含旅客姓名、電子機票號碼、預訂編號等私人資料；這些資料只會在匯入後存入 Firestore。</div></div>
+  <div class="card install-card"><h2>加入主畫面</h2><p class="muted">把首爾旅遊 App 加到手機主畫面，之後可以像一般 App 一樣快速開啟。</p><button id="installAppBtn" class="primary-btn full" ${isStandalone()?'disabled':''}>${installButtonLabel()}</button></div>`;
   document.querySelectorAll('[data-theme-pref]').forEach(btn=>btn.onclick=()=>setThemePreference(btn.dataset.themePref));
   const importFile=$('#importFile');
   if(importFile) importFile.onchange=importPrivateData;
+  $('#installAppBtn').onclick=installApp;
   if(state.isAdmin) renderApprovalRequests();
+}
+
+async function installApp(){
+  if(isStandalone())return;
+  if(installPrompt){
+    const prompt=installPrompt; installPrompt=null;
+    await prompt.prompt();
+    await prompt.userChoice;
+    if(state.page==='more')renderMore();
+    return;
+  }
+  const ios=/iPhone|iPad|iPod/i.test(navigator.userAgent);
+  $('#installInstructions').innerHTML=ios
+    ? '<ol class="install-steps"><li>請先用 Safari 開啟這個網站。</li><li>按畫面下方的「分享」按鈕 <strong>□↑</strong>。</li><li>向下捲動並選擇「加入主畫面」。</li><li>按右上角「新增」。</li></ol>'
+    : '<p>請開啟瀏覽器選單，選擇「安裝應用程式」或「加入主畫面」。</p>';
+  $('#installDialog').showModal();
 }
 
 function renderApprovalRequests(){
@@ -324,5 +352,16 @@ $('#profileBtn').onclick=()=>$('#profileDialog').showModal(); $('#closeProfile')
 $('#logoutBtn').onclick=()=>signOut(auth).then(()=>$('#profileDialog').close());
 $('#accessLogoutBtn').onclick=()=>signOut(auth);
 $('#retryAccessBtn').onclick=resolveAccess;
+$('#closeInstall').onclick=()=>$('#installDialog').close();
+$('#confirmInstallHelp').onclick=()=>$('#installDialog').close();
+
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault(); installPrompt=e;
+  if(state.page==='more'&&!$('#mainView').classList.contains('hidden'))renderMore();
+});
+window.addEventListener('appinstalled',()=>{
+  installPrompt=null;
+  if(state.page==='more'&&!$('#mainView').classList.contains('hidden'))renderMore();
+});
 
 if('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js',{updateViaCache:'none'}).catch(()=>{});
