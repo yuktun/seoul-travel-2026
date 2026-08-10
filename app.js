@@ -4,7 +4,8 @@ import {
   onAuthStateChanged, signOut, setPersistence, browserLocalPersistence
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
 import {
-  getFirestore, doc, getDoc, setDoc, collection, getDocs, writeBatch
+  getFirestore, doc, getDoc, setDoc, collection, getDocs, writeBatch,
+  serverTimestamp, onSnapshot
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 
 const firebaseConfig = {
@@ -24,7 +25,8 @@ const provider = new GoogleAuthProvider();
 await setPersistence(auth, browserLocalPersistence);
 
 const TRIP_ID = 'seoul-2026';
-let state = { user:null, trip:null, days:[], bookings:[], page:'today' };
+let state = { user:null, trip:null, days:[], bookings:[], page:'today', isAdmin:false };
+let stopAccessListener=null;
 
 const $ = s => document.querySelector(s);
 const content = $('#content');
@@ -96,13 +98,56 @@ async function login(){
 $('#loginBtn').addEventListener('click',login);
 
 onAuthStateChanged(auth, async user=>{
+  stopAccessListener?.(); stopAccessListener=null;
   state.user=user;
-  if(!user){ $('#loginView').classList.remove('hidden'); $('#mainView').classList.add('hidden'); return; }
-  $('#loginView').classList.add('hidden'); $('#mainView').classList.remove('hidden');
+  state.isAdmin=false;
+  $('#loginView').classList.toggle('hidden',!!user);
+  $('#accessView').classList.add('hidden');
+  $('#mainView').classList.add('hidden');
+  if(!user)return;
   $('#profileInfo').innerHTML=`<p><strong>${esc(user.displayName||'')}</strong><br><span class="muted">${esc(user.email||'')}</span></p>`;
-  renderLoading();
-  await loadTrip(); render();
+  showAccessState('checking');
+  await resolveAccess();
 });
+
+function showAccessState(status){
+  const states={
+    checking:['⏳','正在檢查權限','請稍候…',false],
+    pending:['🕐','等候管理員批准','你的加入申請已送出。批准後，這個畫面會自動更新。',true],
+    rejected:['🔒','申請未獲批准','請聯絡旅程管理員了解詳情。',true],
+    error:['⚠️','未能檢查權限','請確認網絡連線，或請管理員完成 Firebase 權限設定。',true]
+  };
+  const [icon,title,message,retry]=states[status]||states.error;
+  $('#loginView').classList.add('hidden'); $('#mainView').classList.add('hidden'); $('#accessView').classList.remove('hidden');
+  $('#accessIcon').textContent=icon; $('#accessTitle').textContent=title; $('#accessMessage').textContent=message;
+  $('#retryAccessBtn').classList.toggle('hidden',!retry);
+}
+
+async function resolveAccess(){
+  if(!state.user)return;
+  stopAccessListener?.(); stopAccessListener=null;
+  showAccessState('checking');
+  try{
+    const adminSnap=await getDoc(doc(db,'admins',state.user.uid));
+    state.isAdmin=adminSnap.exists();
+    if(!state.isAdmin){
+      const requestRef=doc(db,'accessRequests',state.user.uid);
+      let requestSnap=await getDoc(requestRef);
+      if(!requestSnap.exists()){
+        await setDoc(requestRef,{email:state.user.email||'',displayName:state.user.displayName||'',status:'pending',createdAt:serverTimestamp()});
+        requestSnap=await getDoc(requestRef);
+      }
+      const status=requestSnap.data()?.status;
+      if(status!=='approved'){
+        showAccessState(status==='rejected'?'rejected':'pending');
+        stopAccessListener=onSnapshot(requestRef,snap=>{if(snap.data()?.status==='approved')resolveAccess()});
+        return;
+      }
+    }
+    $('#accessView').classList.add('hidden'); $('#mainView').classList.remove('hidden');
+    renderLoading(); await loadTrip(); render();
+  }catch(e){showAccessState('error')}
+}
 
 function renderLoading(){
   $('#pageTitle').textContent='正在載入';
@@ -195,7 +240,7 @@ function renderMore(){
   const trip=state.trip||{};
   const themePref=getThemePreference();
   const currentTheme=effectiveTheme(themePref);
-  content.innerHTML=`<div class="card"><h2>外觀</h2><p class="muted small">預設為自動，會跟隨手機或電腦的系統外觀。你亦可以固定使用日間或夜間模式。</p>
+  content.innerHTML=`${state.isAdmin?'<div class="card"><h2>加入申請</h2><div id="approvalList" class="approval-list"><span class="muted small">正在載入…</span></div></div>':''}<div class="card"><h2>外觀</h2><p class="muted small">預設為自動，會跟隨手機或電腦的系統外觀。你亦可以固定使用日間或夜間模式。</p>
   <div class="theme-options" role="group" aria-label="外觀模式">
     <button class="theme-choice ${themePref==='auto'?'active':''}" data-theme-pref="auto" aria-pressed="${themePref==='auto'}"><span class="theme-icon">◐</span><span>自動</span><small>跟隨系統</small></button>
     <button class="theme-choice ${themePref==='day'?'active':''}" data-theme-pref="day" aria-pressed="${themePref==='day'}"><span class="theme-icon">☀️</span><span>日間</span><small>淺色主題</small></button>
@@ -207,6 +252,23 @@ function renderMore(){
   <div class="card"><h2>安全提醒</h2><div class="notice good">網站程式碼不包含旅客姓名、電子機票號碼、預訂編號等私人資料；這些資料只會在匯入後存入 Firestore。</div></div>`;
   document.querySelectorAll('[data-theme-pref]').forEach(btn=>btn.onclick=()=>setThemePreference(btn.dataset.themePref));
   $('#importFile').onchange=importPrivateData;
+  if(state.isAdmin) renderApprovalRequests();
+}
+
+async function renderApprovalRequests(){
+  const list=$('#approvalList'); if(!list)return;
+  try{
+    const snap=await getDocs(collection(db,'accessRequests'));
+    const pending=snap.docs.filter(d=>d.data().status==='pending');
+    list.innerHTML=pending.length?pending.map(d=>{const r=d.data();return `<div class="approval-row"><div><strong>${esc(r.displayName||'未有名稱')}</strong><div class="muted small">${esc(r.email||'')}</div></div><button class="primary-btn approve-btn" data-approve="${esc(d.id)}">批准</button></div>`}).join(''):'<div class="notice good">目前沒有等候批准的申請。</div>';
+    document.querySelectorAll('[data-approve]').forEach(btn=>btn.onclick=async()=>{
+      btn.disabled=true; btn.textContent='正在批准…';
+      try{
+        await setDoc(doc(db,'accessRequests',btn.dataset.approve),{status:'approved',approvedAt:serverTimestamp(),approvedBy:state.user.uid},{merge:true});
+        await renderApprovalRequests();
+      }catch(e){btn.disabled=false;btn.textContent='再試一次'}
+    });
+  }catch(e){list.innerHTML='<div class="notice danger">未能載入申請，請檢查 Firestore Rules。</div>'}
 }
 
 async function importPrivateData(ev){
@@ -228,5 +290,7 @@ async function importPrivateData(ev){
 document.querySelectorAll('.nav-item').forEach(btn=>btn.onclick=()=>{state.page=btn.dataset.page;render()});
 $('#profileBtn').onclick=()=>$('#profileDialog').showModal(); $('#closeProfile').onclick=()=>$('#profileDialog').close();
 $('#logoutBtn').onclick=()=>signOut(auth).then(()=>$('#profileDialog').close());
+$('#accessLogoutBtn').onclick=()=>signOut(auth);
+$('#retryAccessBtn').onclick=resolveAccess;
 
 if('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js',{updateViaCache:'none'}).catch(()=>{});

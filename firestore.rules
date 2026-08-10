@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function admin() {
+      return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function approved() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/accessRequests/$(request.auth.uid))
+        && get(/databases/$(database)/documents/accessRequests/$(request.auth.uid)).data.status == 'approved';
+    }
+
+    match /admins/{userId} {
+      allow get: if signedIn() && request.auth.uid == userId;
+      allow list, create, update, delete: if false;
+    }
+
+    match /accessRequests/{userId} {
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(['email', 'displayName', 'status', 'createdAt'])
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time;
+      allow get: if signedIn() && (request.auth.uid == userId || admin());
+      allow list, update, delete: if admin();
+    }
+
+    match /trips/{tripId} {
+      allow read: if admin() || approved();
+      allow write: if admin();
+
+      match /{document=**} {
+        allow read: if admin() || approved();
+        allow write: if admin();
+      }
+    }
+  }
+}

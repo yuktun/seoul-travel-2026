@@ -6,6 +6,7 @@
 - 無需建置步驟的靜態 HTML、CSS 及 JavaScript，部署於 GitHub Pages 的 `/seoul-travel-2026/` 子路徑。
 - Firebase Authentication 提供 Google 登入；Cloud Firestore 儲存私人行程及預訂資料。
 - Google 登入使用彈出式視窗，避免 iPhone 已安裝 PWA 在跨網域重新導向後遺失 Firebase 登入狀態。
+- 新用戶登入後會建立等候批准的申請；管理員可在「更多 → 加入申請」批准。Firestore Rules 會阻止未獲批准的帳戶讀取旅程。
 - Service Worker、Web App Manifest 及相對路徑提供安裝與基本離線瀏覽支援。
 
 ## 安全設計
@@ -17,6 +18,8 @@
 Project: `seoul-travel-2026`
 
 Firestore Rules 應限制只有已核准 Google 帳戶可存取 `/trips/**`。
+
+首次啟用批准功能前，先在 Firebase Console 找出管理員的 Authentication UID，然後在 Firestore 建立文件 `admins/<管理員 UID>`（內容可為空物件），再部署 `firestore.rules`。管理員文件只能經 Firebase Console 或受信任的管理工具建立，不能由網頁自行提升權限。
 
 ## 本機測試
 以一般 HTTP server 在此目錄提供檔案，例如 `python -m http.server 8000`。由於使用 ES modules，不建議以 `file://` 開啟。
