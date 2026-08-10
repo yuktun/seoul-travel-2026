@@ -99,16 +99,29 @@ $('#loginBtn').addEventListener('click',login);
 
 onAuthStateChanged(auth, async user=>{
   stopAccessListener?.(); stopAccessListener=null;
+  clearPrivateState();
   state.user=user;
-  state.isAdmin=false;
   $('#loginView').classList.toggle('hidden',!!user);
   $('#accessView').classList.add('hidden');
   $('#mainView').classList.add('hidden');
-  if(!user)return;
+  if(!user){
+    $('#profileInfo').textContent='';
+    if($('#profileDialog').open) $('#profileDialog').close();
+    return;
+  }
   $('#profileInfo').innerHTML=`<p><strong>${esc(user.displayName||'')}</strong><br><span class="muted">${esc(user.email||'')}</span></p>`;
   showAccessState('checking');
   await resolveAccess();
 });
+
+function clearPrivateState(){
+  state.trip=null;
+  state.days=[];
+  state.bookings=[];
+  state.isAdmin=false;
+  state.page='today';
+  content.replaceChildren();
+}
 
 function showAccessState(status){
   const states={
@@ -140,7 +153,11 @@ async function resolveAccess(){
       const status=requestSnap.data()?.status;
       if(status!=='approved'){
         showAccessState(status==='rejected'?'rejected':'pending');
-        stopAccessListener=onSnapshot(requestRef,snap=>{if(snap.data()?.status==='approved')resolveAccess()});
+        stopAccessListener=onSnapshot(requestRef,snap=>{
+          const nextStatus=snap.data()?.status;
+          if(nextStatus==='approved') resolveAccess();
+          else showAccessState(nextStatus==='rejected'?'rejected':'pending');
+        },()=>showAccessState('error'));
         return;
       }
     }
@@ -240,6 +257,7 @@ function renderMore(){
   const trip=state.trip||{};
   const themePref=getThemePreference();
   const currentTheme=effectiveTheme(themePref);
+  const importSection=state.isAdmin?`<div class="card"><h2>匯入私人行程資料</h2><p class="muted">選擇由我提供的 <code>seoul-private-data.json</code>。資料會直接寫入你登入帳戶可存取的 Firestore；JSON 不需要上載到 GitHub。</p><label class="file-label">選擇私人 JSON<input id="importFile" type="file" accept="application/json"></label><div id="importStatus" class="small muted" style="margin-top:10px"></div></div>`:'';
   content.innerHTML=`${state.isAdmin?'<div class="card"><h2>加入申請</h2><div id="approvalList" class="approval-list"><span class="muted small">正在載入…</span></div></div>':''}<div class="card"><h2>外觀</h2><p class="muted small">預設為自動，會跟隨手機或電腦的系統外觀。你亦可以固定使用日間或夜間模式。</p>
   <div class="theme-options" role="group" aria-label="外觀模式">
     <button class="theme-choice ${themePref==='auto'?'active':''}" data-theme-pref="auto" aria-pressed="${themePref==='auto'}"><span class="theme-icon">◐</span><span>自動</span><small>跟隨系統</small></button>
@@ -248,10 +266,11 @@ function renderMore(){
   </div>
   <div class="theme-status">偏好：${themePreferenceLabel(themePref)} · 目前：${effectiveThemeLabel(currentTheme)}</div></div>
   <div class="card"><h2>快速資訊</h2><div class="kv"><div>旅程</div><div>${esc(trip.title||'首爾旅遊 2026')}</div><div>日期</div><div>${esc(trip.dateRange||'2026/8/19–8/23')}</div><div>人數</div><div>${esc(trip.travellers||'4')}</div></div></div>
-  <div class="card"><h2>匯入私人行程資料</h2><p class="muted">選擇由我提供的 <code>seoul-private-data.json</code>。資料會直接寫入你登入帳戶可存取的 Firestore；JSON 不需要上載到 GitHub。</p><label class="file-label">選擇私人 JSON<input id="importFile" type="file" accept="application/json"></label><div id="importStatus" class="small muted" style="margin-top:10px"></div></div>
+  ${importSection}
   <div class="card"><h2>安全提醒</h2><div class="notice good">網站程式碼不包含旅客姓名、電子機票號碼、預訂編號等私人資料；這些資料只會在匯入後存入 Firestore。</div></div>`;
   document.querySelectorAll('[data-theme-pref]').forEach(btn=>btn.onclick=()=>setThemePreference(btn.dataset.themePref));
-  $('#importFile').onchange=importPrivateData;
+  const importFile=$('#importFile');
+  if(importFile) importFile.onchange=importPrivateData;
   if(state.isAdmin) renderApprovalRequests();
 }
 
