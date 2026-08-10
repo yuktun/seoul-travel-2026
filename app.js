@@ -1,7 +1,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
-  getRedirectResult, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence
+  getAuth, GoogleAuthProvider, signInWithPopup,
+  onAuthStateChanged, signOut, setPersistence, browserLocalPersistence
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
 import {
   getFirestore, doc, getDoc, setDoc, collection, getDocs, writeBatch
@@ -84,12 +84,16 @@ function fmtDate(d){return new Intl.DateTimeFormat('zh-HK',{month:'numeric',day:
 async function login(){
   $('#loginStatus').textContent='正在開啟 Google 登入…';
   try{
-    const mobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if(mobile) await signInWithRedirect(auth,provider); else await signInWithPopup(auth,provider);
-  }catch(e){ $('#loginStatus').textContent='登入失敗：'+e.message; }
+    await signInWithPopup(auth,provider);
+    $('#loginStatus').textContent='';
+  }catch(e){
+    const retryCodes=['auth/popup-blocked','auth/popup-closed-by-user','auth/cancelled-popup-request'];
+    $('#loginStatus').textContent=retryCodes.includes(e.code)
+      ? '登入視窗未能完成。請允許彈出式視窗後再試一次。'
+      : '登入失敗，請稍後再試。';
+  }
 }
 $('#loginBtn').addEventListener('click',login);
-getRedirectResult(auth).catch(()=>{});
 
 onAuthStateChanged(auth, async user=>{
   state.user=user;

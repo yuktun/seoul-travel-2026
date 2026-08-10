@@ -5,6 +5,7 @@
 ## 架構
 - 無需建置步驟的靜態 HTML、CSS 及 JavaScript，部署於 GitHub Pages 的 `/seoul-travel-2026/` 子路徑。
 - Firebase Authentication 提供 Google 登入；Cloud Firestore 儲存私人行程及預訂資料。
+- Google 登入使用彈出式視窗，避免 iPhone 已安裝 PWA 在跨網域重新導向後遺失 Firebase 登入狀態。
 - Service Worker、Web App Manifest 及相對路徑提供安裝與基本離線瀏覽支援。
 
 ## 安全設計
