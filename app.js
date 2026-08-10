@@ -68,12 +68,14 @@ function effectiveThemeLabel(theme){
 }
 
 applyTheme();
-themeMedia.addEventListener?.('change',()=>{
+function handleSystemThemeChange(){
   if(getThemePreference()==='auto'){
     applyTheme('auto');
     if(state.page==='more') renderMore();
   }
-});
+}
+if(themeMedia.addEventListener) themeMedia.addEventListener('change',handleSystemThemeChange);
+else themeMedia.addListener?.(handleSystemThemeChange);
 
 function esc(v=''){return String(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function money(n){return new Intl.NumberFormat('zh-HK',{maximumFractionDigits:2}).format(n||0)}
@@ -94,8 +96,14 @@ onAuthStateChanged(auth, async user=>{
   if(!user){ $('#loginView').classList.remove('hidden'); $('#mainView').classList.add('hidden'); return; }
   $('#loginView').classList.add('hidden'); $('#mainView').classList.remove('hidden');
   $('#profileInfo').innerHTML=`<p><strong>${esc(user.displayName||'')}</strong><br><span class="muted">${esc(user.email||'')}</span></p>`;
+  renderLoading();
   await loadTrip(); render();
 });
+
+function renderLoading(){
+  $('#pageTitle').textContent='正在載入';
+  content.innerHTML='<div class="card loading-state" role="status"><span class="spinner" aria-hidden="true"></span><div><strong>正在載入行程</strong><div class="muted small">請稍候…</div></div></div>';
+}
 
 async function loadTrip(){
   try{
@@ -108,7 +116,7 @@ async function loadTrip(){
     state.days=daySnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.date.localeCompare(b.date));
     state.bookings=bookSnap.docs.map(d=>({id:d.id,...d.data()}));
   }catch(e){
-    console.error(e); state.trip=null; state.days=[]; state.bookings=[];
+    console.warn('無法載入行程資料。'); state.trip=null; state.days=[]; state.bookings=[];
   }
 }
 
@@ -185,9 +193,9 @@ function renderMore(){
   const currentTheme=effectiveTheme(themePref);
   content.innerHTML=`<div class="card"><h2>外觀</h2><p class="muted small">預設為自動，會跟隨手機或電腦的系統外觀。你亦可以固定使用日間或夜間模式。</p>
   <div class="theme-options" role="group" aria-label="外觀模式">
-    <button class="theme-choice ${themePref==='auto'?'active':''}" data-theme-pref="auto"><span class="theme-icon">◐</span><span>自動</span><small>跟隨系統</small></button>
-    <button class="theme-choice ${themePref==='day'?'active':''}" data-theme-pref="day"><span class="theme-icon">☀️</span><span>日間</span><small>淺色主題</small></button>
-    <button class="theme-choice ${themePref==='night'?'active':''}" data-theme-pref="night"><span class="theme-icon">🌙</span><span>夜間</span><small>深色主題</small></button>
+    <button class="theme-choice ${themePref==='auto'?'active':''}" data-theme-pref="auto" aria-pressed="${themePref==='auto'}"><span class="theme-icon">◐</span><span>自動</span><small>跟隨系統</small></button>
+    <button class="theme-choice ${themePref==='day'?'active':''}" data-theme-pref="day" aria-pressed="${themePref==='day'}"><span class="theme-icon">☀️</span><span>日間</span><small>淺色主題</small></button>
+    <button class="theme-choice ${themePref==='night'?'active':''}" data-theme-pref="night" aria-pressed="${themePref==='night'}"><span class="theme-icon">🌙</span><span>夜間</span><small>深色主題</small></button>
   </div>
   <div class="theme-status">偏好：${themePreferenceLabel(themePref)} · 目前：${effectiveThemeLabel(currentTheme)}</div></div>
   <div class="card"><h2>快速資訊</h2><div class="kv"><div>旅程</div><div>${esc(trip.title||'首爾旅遊 2026')}</div><div>日期</div><div>${esc(trip.dateRange||'2026/8/19–8/23')}</div><div>人數</div><div>${esc(trip.travellers||'4')}</div></div></div>
@@ -217,4 +225,4 @@ document.querySelectorAll('.nav-item').forEach(btn=>btn.onclick=()=>{state.page=
 $('#profileBtn').onclick=()=>$('#profileDialog').showModal(); $('#closeProfile').onclick=()=>$('#profileDialog').close();
 $('#logoutBtn').onclick=()=>signOut(auth).then(()=>$('#profileDialog').close());
 
-if('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js').catch(console.warn);
+if('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js',{updateViaCache:'none'}).catch(()=>{});

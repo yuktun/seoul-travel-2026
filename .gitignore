@@ -1,0 +1,14 @@
+# Private trip exports and credentials must never enter the public repository.
+seoul-private-data.json
+*private-data*.json
+*service-account*.json
+*serviceAccount*.json
+firebase-adminsdk-*.json
+.env
+.env.*
+!.env.example
+
+# Local tooling and OS files
+node_modules/
+.DS_Store
+Thumbs.db
