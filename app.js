@@ -115,19 +115,34 @@ function inferredNotePlaces(event){
     .map(x=>x.replace(/或其他.*$/,'').trim())
     .filter(x=>x&&x.length<=32&&!reject.test(x)&&placeWord.test(x));
 }
-function placeChips(event,day,names){
+function placeButton(event,day,name,index){
   const korean=Array.isArray(event.placeNamesKo)?event.placeNamesKo:[];
-  return `<span class="mini-place-list">${names.map((name,i)=>{
-    const label=state.language==='ko'?(korean[i]||name):name;
-    return `<button class="mini-place-link" data-place-name="${esc(name)}" data-place-label="${esc(label)}" data-place-area="${esc(areaContext(day))}">${esc(label)}</button>`;
-  }).join('')}</span>`;
+  const label=state.language==='ko'?(korean[index]||name):name;
+  return `<button class="mini-place-link" data-place-name="${esc(name)}" data-place-label="${esc(label)}" data-place-area="${esc(areaContext(day))}">${esc(label)}</button>`;
+}
+function placeChips(event,day,names){
+  return `<span class="mini-place-list">${names.map((name,i)=>placeButton(event,day,name,i)).join('')}</span>`;
+}
+function linkedNoteHtml(note,event,day,names){
+  let remaining=note,out='',linked=false;
+  while(remaining){
+    let found=null;
+    names.forEach((name,index)=>{
+      const at=remaining.indexOf(name);
+      if(at>=0&&(!found||at<found.at||(at===found.at&&name.length>found.name.length)))found={name,index,at};
+    });
+    if(!found)break;
+    out+=phoneHtml(remaining.slice(0,found.at))+placeButton(event,day,found.name,found.index);
+    remaining=remaining.slice(found.at+found.name.length);linked=true;
+  }
+  return linked?out+phoneHtml(remaining):`${phoneHtml(note)}${placeChips(event,day,names)}`;
 }
 function eventNoteHtml(event,day){
   const note=String(localized(event,'note')||''),original=String(event.note||'');
   const match=original.match(/^(.*?(?:餐飲候選|候選)：)(.+)$/);
   const names=inferredNotePlaces(event);
   if(!names.length)return phoneHtml(note);
-  if(!match)return `<span class="event-note-text">${phoneHtml(note)}</span>${placeChips(event,day,names)}`;
+  if(!match)return `<span class="event-note-text">${linkedNoteHtml(note,event,day,names)}</span>`;
   const prefix=state.language==='ko'?'추천 장소: ':match[1];
   return `<span>${esc(prefix)}</span>${placeChips(event,day,names)}`;
 }
