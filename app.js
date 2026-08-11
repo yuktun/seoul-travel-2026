@@ -25,6 +25,29 @@ const provider = new GoogleAuthProvider();
 await setPersistence(auth, browserLocalPersistence);
 
 const TRIP_ID = 'seoul-2026';
+const SEOUL_FACTS=[
+  '首爾擁有超過二千年的城市歷史，曾是百濟與朝鮮王朝的首都。',
+  '朝鮮太祖在 1394 年把首都定於漢陽，也就是今天的首爾。',
+  '古代漢陽城牆全長約 18 公里，沿著四座山峰環抱首都。',
+  '首爾有五座朝鮮王朝宮殿，每座都保存著不同時期的故事。',
+  '「景福」二字有「偉大的福氣」之意，難怪景福宮名字這麼喜氣。',
+  '昌德宮以建築與自然地形的和諧聞名，並列入世界文化遺產。',
+  '漢江在朝鮮時代是重要運輸線，稅糧與貨物會沿河送進首都。',
+  '南山昔日設有烽火台，以煙與火把邊境消息傳往王城。',
+  '鐘路在朝鮮時代已有官方認可的商店，是漢陽的重要商業中心。',
+  '清溪川一帶早在朝鮮後期便商業興盛，今日散步時仍能感受城市脈搏。',
+  '廣藏市場是首爾最早由私人商人建立的全年市場之一。',
+  '廣藏市場不只有美食，也以韓服、布料和古著聞名。',
+  '首爾歷史上曾有漢城、漢陽、京城等不同名稱，每個名字都代表一段時代。',
+  '漢江有約 41 公里流經首爾，最寬處可達約 1.2 公里。',
+  '首爾人把漢江視為城市代表；河邊也是野餐、踏單車與看夜景的熱門去處。',
+  '韓式餐桌上的小菜叫「반찬（banchan）」，大家可以自由配搭不同味道。',
+  '拌飯很能代表韓國飲食的「混合文化」：各種食材拌在一起產生新風味。',
+  '朝鮮王室料理由受過嚴格訓練的宮女與專業男廚師共同準備。',
+  '韓屋會順應自然環境設計；傳統暖炕「온돌」則從地板下方供暖。',
+  '首爾最迷人的地方，是宮殿、市場、咖啡店與未來感建築可以在同一天相遇。'
+];
+let seoulFactIndex=Math.floor(Math.random()*SEOUL_FACTS.length);
 let state = { user:null, trip:null, days:[], bookings:[], page:'today', isAdmin:false, language:localStorage.getItem('displayLanguage')==='ko'?'ko':'zh' };
 let stopAccessListener=null;
 let stopApprovalListener=null;
@@ -275,7 +298,16 @@ function renderEmpty(){
 function targetDay(){
   if(!state.days.length) return null;
   const now=new Date(); const ymd=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
-  return state.days.find(d=>d.date===ymd)||state.days[0];
+  return state.days.find(d=>d.date===ymd)||null;
+}
+function localTripDate(value){const [year,month,day]=String(value||'').split('-').map(Number);return new Date(year,month-1,day)}
+function tripTodayState(){
+  if(!state.days.length)return {phase:'empty'};
+  const now=new Date();now.setHours(0,0,0,0);
+  const first=localTripDate(state.days[0].date),last=localTripDate(state.days[state.days.length-1].date);
+  if(now<first)return {phase:'before',days:Math.ceil((first-now)/86400000)};
+  if(now>last)return {phase:'after'};
+  return {phase:'during',day:targetDay()};
 }
 
 function eventHtml(e,dayId,index){
@@ -334,7 +366,18 @@ function closeDetail(){
 }
 
 function renderToday(){
-  const d=targetDay(); if(!d)return renderEmpty();
+  const today=tripTodayState();
+  if(today.phase==='empty')return renderEmpty();
+  if(today.phase==='before'){
+    content.innerHTML=`<section class="countdown-hero"><div class="countdown-kicker">旅程即將開始</div><div class="countdown-number">${today.days}</div><div class="countdown-unit">日後出發首爾</div><div class="countdown-message">行李還未收拾，心已經飛到首爾。<br>準備好一起吃、逛、拍照和創造回憶吧！</div></section><section class="card fact-card"><div class="fact-label">🇰🇷 今日首爾趣聞</div><p id="seoulFact">${esc(SEOUL_FACTS[seoulFactIndex])}</p><button class="secondary-btn fact-next" id="newFact">換一則趣聞</button></section>`;
+    $('#newFact').onclick=()=>{let next=seoulFactIndex;while(next===seoulFactIndex)next=Math.floor(Math.random()*SEOUL_FACTS.length);seoulFactIndex=next;$('#seoulFact').textContent=SEOUL_FACTS[next]};
+    return;
+  }
+  if(today.phase==='after'){
+    content.innerHTML='<section class="countdown-hero trip-complete"><div class="countdown-kicker">旅程已完成</div><div class="countdown-number">서울</div><div class="countdown-unit">回憶已收藏</div><div class="countdown-message">謝謝這趟旅程帶來的美食、笑聲與故事。<br>隨時打開行程頁，再次回味首爾時光。</div></section>';
+    return;
+  }
+  const d=today.day;if(!d)return renderEmpty();
   content.innerHTML=`<section class="hero"><div class="sub">${esc(d.dateLabel||d.date)}</div><div class="big">${esc(localized(d,'area')||'首爾')}</div><div class="meta">${esc(localized(d,'summary')||'')}</div></section>
   <div class="section-title section-title-row"><span>${t('今日行程','오늘 일정')}</span>${state.isAdmin?`<button class="secondary-btn admin-add-btn" data-add-event="${esc(d.id)}">＋ 新增行程</button>`:''}</div><div class="card timeline">${(d.events||[]).map((e,i)=>eventHtml(e,d.id,i)).join('')||'<div class="muted small">尚未加入行程。</div>'}</div>`;bindDetailLinks();
 }
