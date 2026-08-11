@@ -103,13 +103,33 @@ function bookingValueHtml(row){
   return phoneLabel?phoneHtml(row?.value):esc(row?.value||'');
 }
 function areaContext(day){return String(day?.area||'').split(/[・·•]/).filter(Boolean).pop()||''}
+function inferredNotePlaces(event){
+  if(Array.isArray(event?.places))return event.places.map(String).map(x=>x.trim()).filter(Boolean);
+  const note=String(event?.note||'');
+  const candidates=note.match(/^(.*?(?:餐飲候選|候選)：)(.+)$/);
+  if(candidates)return candidates[2].split('、').map(x=>x.trim()).filter(Boolean);
+  const reject=/出口|分鐘|小時|車程|預留|營業|時間|資料|更新|為主|可回|如果|如東大門|之後$/;
+  const placeWord=/市場|公園|廣場|一條街|街區|韓屋|村|洞|café|cafe|咖啡|餐廳|食堂|湯|雞|麵|包|bread|플라자|카페|[A-Za-z][A-Za-z0-9 -]{2,}/i;
+  return note.split(/[；;，,、／/]/)
+    .map(x=>x.replace(/^(?:候選：|餐飲候選：|之後步行至|步行至|再到|可到|或到)\s*/,'').trim())
+    .map(x=>x.replace(/或其他.*$/,'').trim())
+    .filter(x=>x&&x.length<=32&&!reject.test(x)&&placeWord.test(x));
+}
+function placeChips(event,day,names){
+  const korean=Array.isArray(event.placeNamesKo)?event.placeNamesKo:[];
+  return `<span class="mini-place-list">${names.map((name,i)=>{
+    const label=state.language==='ko'?(korean[i]||name):name;
+    return `<button class="mini-place-link" data-place-name="${esc(name)}" data-place-label="${esc(label)}" data-place-area="${esc(areaContext(day))}">${esc(label)}</button>`;
+  }).join('')}</span>`;
+}
 function eventNoteHtml(event,day){
   const note=String(localized(event,'note')||''),original=String(event.note||'');
   const match=original.match(/^(.*?(?:餐飲候選|候選)：)(.+)$/);
-  if(!match)return phoneHtml(note);
-  const names=match[2].split('、').map(x=>x.trim()).filter(Boolean),korean=Array.isArray(event.placeNamesKo)?event.placeNamesKo:[];
+  const names=inferredNotePlaces(event);
+  if(!names.length)return phoneHtml(note);
+  if(!match)return `<span class="event-note-text">${phoneHtml(note)}</span>${placeChips(event,day,names)}`;
   const prefix=state.language==='ko'?'추천 장소: ':match[1];
-  return `<span>${esc(prefix)}</span><span class="mini-place-list">${names.map((name,i)=>`<button class="mini-place-link" data-place-name="${esc(name)}" data-place-label="${esc(state.language==='ko'?(korean[i]||name):name)}" data-place-area="${esc(areaContext(day))}">${esc(state.language==='ko'?(korean[i]||name):name)}</button>`).join('')}</span>`;
+  return `<span>${esc(prefix)}</span>${placeChips(event,day,names)}`;
 }
 function money(n){return new Intl.NumberFormat('zh-HK',{maximumFractionDigits:2}).format(n||0)}
 function fmtDate(d){return new Intl.DateTimeFormat('zh-HK',{month:'numeric',day:'numeric',weekday:'short'}).format(d)}
