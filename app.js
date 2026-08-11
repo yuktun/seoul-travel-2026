@@ -4,7 +4,7 @@ import {
   onAuthStateChanged, signOut, setPersistence, browserLocalPersistence
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
 import {
-  getFirestore, doc, getDoc, setDoc, collection, getDocs, writeBatch,
+  getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, writeBatch,
   serverTimestamp, onSnapshot
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 
@@ -29,6 +29,7 @@ let state = { user:null, trip:null, days:[], bookings:[], page:'today', isAdmin:
 let stopAccessListener=null;
 let stopApprovalListener=null;
 let installPrompt=null;
+let editorContext=null;
 
 const $ = s => document.querySelector(s);
 const content = $('#content');
@@ -283,13 +284,25 @@ function eventHtml(e,dayId,index){
   if(e.googleMaps) maps.push(`<a class="link-btn" target="_blank" rel="noopener" href="${esc(e.googleMaps)}">Google 地圖</a>`);
   if(e.naverMaps) maps.push(`<a class="link-btn" target="_blank" rel="noopener" href="${esc(e.naverMaps)}">Naver Map</a>`);
   const day=state.days.find(x=>x.id===dayId);
-  return `<div class="event"><div class="time">${esc(e.time||'')}</div><div><button class="event-title item-link" data-event-day="${esc(dayId)}" data-event-index="${index}">${esc(localized(e,'title')||'')}</button>${e.note?`<div class="event-note">${eventNoteHtml(e,day)}</div>`:''}${badges}${maps.join('')}</div></div>`;
+  const adminActions=state.isAdmin?`<div class="admin-item-actions"><button class="admin-text-btn" data-edit-event="${esc(dayId)}" data-event-index="${index}">編輯</button><button class="admin-text-btn danger-text" data-delete-event="${esc(dayId)}" data-event-index="${index}">刪除</button></div>`:'';
+  return `<div class="event"><div class="time">${esc(e.time||'')}</div><div><button class="event-title item-link" data-event-day="${esc(dayId)}" data-event-index="${index}">${esc(localized(e,'title')||'')}</button>${e.note?`<div class="event-note">${eventNoteHtml(e,day)}</div>`:''}${badges}${maps.join('')}${adminActions}</div></div>`;
 }
 
 function bindDetailLinks(){
   if(content.dataset.detailLinksBound)return;
   content.dataset.detailLinksBound='true';
   content.addEventListener('click',ev=>{
+    const editEvent=ev.target.closest('[data-edit-event]');
+    if(editEvent){openEventEditor(editEvent.dataset.editEvent,Number(editEvent.dataset.eventIndex));return}
+    const deleteEvent=ev.target.closest('[data-delete-event]');
+    if(deleteEvent){removeEvent(deleteEvent.dataset.deleteEvent,Number(deleteEvent.dataset.eventIndex));return}
+    const addEvent=ev.target.closest('[data-add-event]');
+    if(addEvent){openEventEditor(addEvent.dataset.addEvent);return}
+    const editBooking=ev.target.closest('[data-edit-booking]');
+    if(editBooking){openBookingEditor(editBooking.dataset.editBooking);return}
+    const deleteBooking=ev.target.closest('[data-delete-booking]');
+    if(deleteBooking){removeBooking(deleteBooking.dataset.deleteBooking);return}
+    if(ev.target.closest('#addBooking')){openBookingEditor();return}
     const placeLink=ev.target.closest('[data-place-name]');
     if(placeLink){openDetail({title:placeLink.dataset.placeLabel,mapQuery:`${placeLink.dataset.placeArea} ${placeLink.dataset.placeName}`,note:t('餐廳／地點資料','식당／장소 정보')});return}
     const eventLink=ev.target.closest('[data-event-day]');
@@ -323,7 +336,7 @@ function closeDetail(){
 function renderToday(){
   const d=targetDay(); if(!d)return renderEmpty();
   content.innerHTML=`<section class="hero"><div class="sub">${esc(d.dateLabel||d.date)}</div><div class="big">${esc(localized(d,'area')||'首爾')}</div><div class="meta">${esc(localized(d,'summary')||'')}</div></section>
-  <div class="section-title">${t('今日行程','오늘 일정')}</div><div class="card timeline">${(d.events||[]).map((e,i)=>eventHtml(e,d.id,i)).join('')}</div>`;bindDetailLinks();
+  <div class="section-title section-title-row"><span>${t('今日行程','오늘 일정')}</span>${state.isAdmin?`<button class="secondary-btn admin-add-btn" data-add-event="${esc(d.id)}">＋ 新增行程</button>`:''}</div><div class="card timeline">${(d.events||[]).map((e,i)=>eventHtml(e,d.id,i)).join('')||'<div class="muted small">尚未加入行程。</div>'}</div>`;bindDetailLinks();
 }
 
 function renderDays(){
@@ -333,7 +346,7 @@ function renderDays(){
 function renderDayDetail(id){
   const d=state.days.find(x=>x.id===id); if(!d)return;
   $('#pageTitle').textContent=d.dateLabel||d.date;
-  content.innerHTML=`<button class="secondary-btn" id="backDays">← ${t('返回全部行程','전체 일정으로')}</button><section class="hero" style="margin-top:12px"><div class="sub">${esc(d.dateLabel||'')}</div><div class="big">${esc(localized(d,'area')||'')}</div><div class="meta">${esc(localized(d,'summary')||'')}</div></section><div class="card timeline">${(d.events||[]).map((e,i)=>eventHtml(e,d.id,i)).join('')}</div>`;
+  content.innerHTML=`<button class="secondary-btn" id="backDays">← ${t('返回全部行程','전체 일정으로')}</button><section class="hero" style="margin-top:12px"><div class="sub">${esc(d.dateLabel||'')}</div><div class="big">${esc(localized(d,'area')||'')}</div><div class="meta">${esc(localized(d,'summary')||'')}</div></section>${state.isAdmin?`<div class="admin-toolbar"><button class="primary-btn" data-add-event="${esc(d.id)}">＋ 新增行程</button></div>`:''}<div class="card timeline">${(d.events||[]).map((e,i)=>eventHtml(e,d.id,i)).join('')||'<div class="muted small">尚未加入行程。</div>'}</div>`;
   $('#backDays').onclick=()=>{state.page='days';render()};
   bindDetailLinks();
 }
@@ -341,12 +354,76 @@ function renderDayDetail(id){
 function revealBlock(value){return `<span class="sensitive">${esc(value||'—')}</span>`}
 function bookingCard(b){
   const rows=(b.details||[]).map(r=>`<div>${esc(r.label)}</div><div class="${r.sensitive?'sensitive':''}">${bookingValueHtml(r)}</div>`).join('');
-  return `<article class="booking-card"><div class="booking-label">${esc(b.type||t('預訂','예약'))}</div><button class="booking-value item-link" data-booking="${esc(b.id)}">${esc(localized(b,'title')||'')}</button><div class="kv">${rows}</div>${(b.details||[]).some(r=>r.sensitive)?`<button class="secondary-btn card-action-btn reveal-btn">${t('顯示／隱藏敏感資料','민감한 정보 표시/숨기기')}</button>`:''}</article>`;
+  return `<article class="booking-card"><div class="booking-label">${esc(b.type||t('預訂','예약'))}</div><button class="booking-value item-link" data-booking="${esc(b.id)}">${esc(localized(b,'title')||'')}</button><div class="kv">${rows}</div>${(b.details||[]).some(r=>r.sensitive)?`<button class="secondary-btn card-action-btn reveal-btn">${t('顯示／隱藏敏感資料','민감한 정보 표시/숨기기')}</button>`:''}${state.isAdmin?`<div class="admin-item-actions"><button class="admin-text-btn" data-edit-booking="${esc(b.id)}">編輯</button><button class="admin-text-btn danger-text" data-delete-booking="${esc(b.id)}">刪除</button></div>`:''}</article>`;
 }
 function renderBookings(){
-  content.innerHTML=`<div class="notice danger">此頁包含私人預訂資料。請勿在公共裝置上長時間顯示。</div><div class="section-title">旅程預訂</div><div class="booking-grid">${state.bookings.map(bookingCard).join('')}</div>`;
+  content.innerHTML=`<div class="notice danger">此頁包含私人預訂資料。請勿在公共裝置上長時間顯示。</div><div class="section-title section-title-row"><span>旅程預訂</span>${state.isAdmin?'<button class="secondary-btn admin-add-btn" id="addBooking">＋ 新增預訂</button>':''}</div><div class="booking-grid">${state.bookings.map(bookingCard).join('')||'<div class="card muted small">尚未加入預訂。</div>'}</div>`;
   document.querySelectorAll('.reveal-btn').forEach(btn=>btn.onclick=()=>btn.closest('.booking-card').querySelectorAll('.sensitive').forEach(x=>x.classList.toggle('reveal')));
   bindDetailLinks();
+}
+
+function showEditorError(message=''){$('#editorStatus').textContent=message}
+function openEventEditor(dayId,index=null){
+  if(!state.isAdmin)return;
+  const day=state.days.find(d=>d.id===dayId);if(!day)return;
+  const event=Number.isInteger(index)?day.events?.[index]:null;
+  editorContext={kind:'event',dayId,index:event?index:null,original:event||null};
+  $('#editorTitle').textContent=event?'編輯行程':'新增行程';
+  $('#eventEditorFields').classList.remove('hidden');$('#bookingEditorFields').classList.add('hidden');
+  $('#eventTime').value=event?.time||'';$('#eventTitle').value=event?.title||'';$('#eventNote').value=event?.note||'';
+  $('#eventTags').value=(event?.tags||[]).join('、');showEditorError();$('#itemEditorDialog').showModal();
+}
+function bookingDetailRow(row={},index=-1){
+  return `<div class="booking-detail-row" data-original-detail="${index}"><input class="form-input detail-label" aria-label="資料名稱" placeholder="名稱，例如：日期" value="${esc(row.label||'')}"><input class="form-input detail-value" aria-label="資料內容" placeholder="內容" value="${esc(row.value||'')}"><label class="sensitive-check"><input class="detail-sensitive" type="checkbox" ${row.sensitive?'checked':''}> 私密</label><button type="button" class="admin-text-btn danger-text remove-detail">移除</button></div>`;
+}
+function addBookingDetail(row={},index=-1){
+  $('#bookingDetails').insertAdjacentHTML('beforeend',bookingDetailRow(row,index));
+}
+function openBookingEditor(id=null){
+  if(!state.isAdmin)return;
+  const booking=id?state.bookings.find(b=>b.id===id):null;
+  editorContext={kind:'booking',id:booking?.id||null,original:booking||null};
+  $('#editorTitle').textContent=booking?'編輯預訂':'新增預訂';
+  $('#eventEditorFields').classList.add('hidden');$('#bookingEditorFields').classList.remove('hidden');
+  $('#bookingType').value=booking?.type||'';$('#bookingTitle').value=booking?.title||'';
+  $('#bookingDetails').innerHTML='';(booking?.details||[{}]).forEach((row,index)=>addBookingDetail(row,booking?index:-1));
+  showEditorError();$('#itemEditorDialog').showModal();
+}
+async function saveEditor(ev){
+  ev.preventDefault();if(!state.isAdmin||!state.user||!editorContext)return;
+  const save=$('#saveEditor');save.disabled=true;save.textContent='正在儲存…';showEditorError();
+  try{
+    if(editorContext.kind==='event'){
+      const day=state.days.find(d=>d.id===editorContext.dayId);if(!day)throw new Error();
+      const item={...(editorContext.original||{}),time:$('#eventTime').value.trim(),title:$('#eventTitle').value.trim(),note:$('#eventNote').value.trim(),tags:$('#eventTags').value.split(/[、,]/).map(x=>x.trim()).filter(Boolean)};
+      if(!item.title)throw new Error('請輸入行程名稱。');
+      const events=[...(day.events||[])];
+      if(editorContext.index===null)events.push(item);else events[editorContext.index]=item;
+      await setDoc(doc(db,'trips',TRIP_ID,'days',day.id),{events,updatedAt:serverTimestamp(),updatedBy:state.user.uid},{merge:true});
+      day.events=events;
+    }else{
+      const originalDetails=editorContext.original?.details||[];
+      const details=[...document.querySelectorAll('.booking-detail-row')].map(row=>{const index=Number(row.dataset.originalDetail);return {...(index>=0?originalDetails[index]:{}),label:row.querySelector('.detail-label').value.trim(),value:row.querySelector('.detail-value').value.trim(),sensitive:row.querySelector('.detail-sensitive').checked}}).filter(r=>r.label||r.value);
+      const original={...(editorContext.original||{})};delete original.id;
+      const item={...original,type:$('#bookingType').value.trim(),title:$('#bookingTitle').value.trim(),details};
+      if(!item.title)throw new Error('請輸入預訂名稱。');
+      const id=editorContext.id||`booking-${crypto.randomUUID()}`;
+      await setDoc(doc(db,'trips',TRIP_ID,'bookings',id),{...item,updatedAt:serverTimestamp(),updatedBy:state.user.uid},{merge:true});
+      const local={id,...item};const at=state.bookings.findIndex(b=>b.id===id);if(at>=0)state.bookings[at]=local;else state.bookings.push(local);
+    }
+    const completed={...editorContext};$('#itemEditorDialog').close();
+    if(completed.kind==='event'&&state.page==='days')renderDayDetail(completed.dayId);else render();
+  }catch(error){showEditorError(error.message||'儲存失敗，請稍後再試。')}
+  finally{save.disabled=false;save.textContent='儲存'}
+}
+async function removeEvent(dayId,index){
+  if(!state.isAdmin||!confirm('確定刪除這個行程項目？'))return;
+  const day=state.days.find(d=>d.id===dayId);if(!day)return;
+  try{const events=(day.events||[]).filter((_,i)=>i!==index);await setDoc(doc(db,'trips',TRIP_ID,'days',day.id),{events,updatedAt:serverTimestamp(),updatedBy:state.user.uid},{merge:true});day.events=events;state.page==='today'?render():renderDayDetail(day.id)}catch(e){alert('刪除失敗，請稍後再試。')}
+}
+async function removeBooking(id){
+  if(!state.isAdmin||!confirm('確定刪除這個預訂？此操作不能復原。'))return;
+  try{await deleteDoc(doc(db,'trips',TRIP_ID,'bookings',id));state.bookings=state.bookings.filter(b=>b.id!==id);renderBookings()}catch(e){alert('刪除失敗，請稍後再試。')}
 }
 
 function renderMoney(){
@@ -456,6 +533,11 @@ $('#detailDialog').onclick=e=>{if(e.target===$('#detailDialog'))closeDetail()};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#detailDialog').classList.contains('hidden'))closeDetail()});
 $('#closeInstall').onclick=()=>$('#installDialog').close();
 $('#confirmInstallHelp').onclick=()=>$('#installDialog').close();
+$('#editorForm').onsubmit=saveEditor;
+$('#closeEditor').onclick=()=>$('#itemEditorDialog').close();
+$('#cancelEditor').onclick=()=>$('#itemEditorDialog').close();
+$('#addBookingDetail').onclick=()=>addBookingDetail();
+$('#bookingDetails').onclick=event=>{const remove=event.target.closest('.remove-detail');if(remove)remove.closest('.booking-detail-row').remove()};
 
 window.addEventListener('beforeinstallprompt',e=>{
   e.preventDefault(); installPrompt=e;

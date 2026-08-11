@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="首爾旅遊" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
   <title>首爾旅遊 2026</title>
-  <link rel="manifest" href="manifest.webmanifest?v=1.13" />
+  <link rel="manifest" href="manifest.webmanifest?v=1.14" />
   <script>
     (() => {
       const pref = localStorage.getItem('themePreference') || 'auto';
@@ -19,7 +19,7 @@
       document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=1.13" />
+  <link rel="stylesheet" href="styles.css?v=1.14" />
 </head>
 <body>
   <div id="app">
@@ -75,6 +75,25 @@
       <button id="confirmInstallHelp" class="primary-btn full">知道了</button>
     </dialog>
 
+    <dialog id="itemEditorDialog" class="modal editor-modal">
+      <form id="editorForm">
+        <div class="modal-head"><strong id="editorTitle">編輯</strong><button id="closeEditor" type="button" class="icon-btn" aria-label="關閉編輯視窗">✕</button></div>
+        <div id="eventEditorFields" class="form-stack">
+          <label>時間<input id="eventTime" class="form-input" placeholder="例如：10:30–12:30"></label>
+          <label>行程名稱<input id="eventTitle" class="form-input" placeholder="輸入地點或活動名稱"></label>
+          <label>描述<textarea id="eventNote" class="form-input" rows="4" placeholder="交通、地址或補充資料"></textarea></label>
+          <label>標籤<input id="eventTags" class="form-input" placeholder="例如：必去、可略過"></label>
+        </div>
+        <div id="bookingEditorFields" class="form-stack hidden">
+          <label>預訂類別<input id="bookingType" class="form-input" placeholder="例如：航班、酒店、接送"></label>
+          <label>預訂名稱<input id="bookingTitle" class="form-input" placeholder="輸入預訂名稱"></label>
+          <div><div class="editor-field-head"><strong>詳細資料</strong><button id="addBookingDetail" type="button" class="secondary-btn small">＋ 新增一行</button></div><div id="bookingDetails" class="booking-details-editor"></div></div>
+        </div>
+        <div id="editorStatus" class="editor-status" role="alert"></div>
+        <div class="editor-actions"><button id="cancelEditor" type="button" class="secondary-btn">取消</button><button id="saveEditor" type="submit" class="primary-btn">儲存</button></div>
+      </form>
+    </dialog>
+
     <section id="detailDialog" class="detail-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="detailTitle" aria-hidden="true">
       <div class="detail-sheet">
         <div class="modal-head"><strong id="detailTitle"></strong><button id="closeDetail" class="icon-btn" aria-label="關閉資料視窗">✕</button></div>
@@ -86,6 +105,6 @@
     </section>
   </div>
 
-  <script type="module" src="app.js?v=1.13"></script>
+  <script type="module" src="app.js?v=1.14"></script>
 </body>
 </html>
