@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="首爾旅遊" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
   <title>首爾旅遊 2026</title>
-  <link rel="manifest" href="manifest.webmanifest?v=1.10" />
+  <link rel="manifest" href="manifest.webmanifest?v=1.11" />
   <script>
     (() => {
       const pref = localStorage.getItem('themePreference') || 'auto';
@@ -19,7 +19,7 @@
       document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=1.10" />
+  <link rel="stylesheet" href="styles.css?v=1.11" />
 </head>
 <body>
   <div id="app">
@@ -78,7 +78,7 @@
     <section id="detailDialog" class="detail-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="detailTitle" aria-hidden="true">
       <div class="detail-sheet">
         <div class="modal-head"><strong id="detailTitle"></strong><button id="closeDetail" class="icon-btn" aria-label="關閉資料視窗">✕</button></div>
-        <div id="koreanHelper" class="korean-helper hidden"><strong>기사님, 이곳으로 가 주세요.</strong><span>司機先生／小姐，請帶我到這裡。</span></div>
+        <div id="koreanHelper" class="korean-helper hidden"><strong>기사님, 이곳으로 가 주세요.</strong><span>司機先生／小姐，請帶我到這裡。</span><strong>이곳을 찾는 것을 도와주세요.</strong><span>請幫我找這個地方。</span></div>
         <div id="detailIntro" class="detail-intro"></div>
         <iframe id="detailMap" class="detail-map" title="Google 地圖" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
         <div class="detail-actions"><a id="openGoogleMaps" class="primary-btn map-open-btn" target="_blank" rel="noopener">在 Google 地圖開啟</a><button id="closeDetailBottom" class="secondary-btn">關閉</button></div>
@@ -86,6 +86,6 @@
     </section>
   </div>
 
-  <script type="module" src="app.js?v=1.10"></script>
+  <script type="module" src="app.js?v=1.11"></script>
 </body>
 </html>

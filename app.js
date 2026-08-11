@@ -102,6 +102,15 @@ function bookingValueHtml(row){
   const phoneLabel=/電話|手機|聯絡|phone|telephone|tel/i.test(String(row?.label||''));
   return phoneLabel?phoneHtml(row?.value):esc(row?.value||'');
 }
+function areaContext(day){return String(day?.area||'').split(/[・·•]/).filter(Boolean).pop()||''}
+function eventNoteHtml(event,day){
+  const note=String(localized(event,'note')||''),original=String(event.note||'');
+  const match=original.match(/^(.*?(?:餐飲候選|候選)：)(.+)$/);
+  if(!match)return phoneHtml(note);
+  const names=match[2].split('、').map(x=>x.trim()).filter(Boolean),korean=Array.isArray(event.placeNamesKo)?event.placeNamesKo:[];
+  const prefix=state.language==='ko'?'추천 장소: ':match[1];
+  return `<span>${esc(prefix)}</span><span class="mini-place-list">${names.map((name,i)=>`<button class="mini-place-link" data-place-name="${esc(name)}" data-place-label="${esc(state.language==='ko'?(korean[i]||name):name)}" data-place-area="${esc(areaContext(day))}">${esc(state.language==='ko'?(korean[i]||name):name)}</button>`).join('')}</span>`;
+}
 function money(n){return new Intl.NumberFormat('zh-HK',{maximumFractionDigits:2}).format(n||0)}
 function fmtDate(d){return new Intl.DateTimeFormat('zh-HK',{month:'numeric',day:'numeric',weekday:'short'}).format(d)}
 
@@ -238,15 +247,18 @@ function eventHtml(e,dayId,index){
   const maps=[];
   if(e.googleMaps) maps.push(`<a class="link-btn" target="_blank" rel="noopener" href="${esc(e.googleMaps)}">Google 地圖</a>`);
   if(e.naverMaps) maps.push(`<a class="link-btn" target="_blank" rel="noopener" href="${esc(e.naverMaps)}">Naver Map</a>`);
-  return `<div class="event"><div class="time">${esc(e.time||'')}</div><div><button class="event-title item-link" data-event-day="${esc(dayId)}" data-event-index="${index}">${esc(localized(e,'title')||'')}</button>${e.note?`<div class="event-note">${phoneHtml(localized(e,'note'))}</div>`:''}${badges}<button class="link-btn detail-link" data-event-day="${esc(dayId)}" data-event-index="${index}">${t('地圖及資料','지도 및 정보')}</button>${maps.join('')}</div></div>`;
+  const day=state.days.find(x=>x.id===dayId);
+  return `<div class="event"><div class="time">${esc(e.time||'')}</div><div><button class="event-title item-link" data-event-day="${esc(dayId)}" data-event-index="${index}">${esc(localized(e,'title')||'')}</button>${e.note?`<div class="event-note">${eventNoteHtml(e,day)}</div>`:''}${badges}${maps.join('')}</div></div>`;
 }
 
 function bindDetailLinks(){
   if(content.dataset.detailLinksBound)return;
   content.dataset.detailLinksBound='true';
   content.addEventListener('click',ev=>{
+    const placeLink=ev.target.closest('[data-place-name]');
+    if(placeLink){openDetail({title:placeLink.dataset.placeLabel,mapQuery:`${placeLink.dataset.placeArea} ${placeLink.dataset.placeName}`,note:t('餐廳／地點資料','식당／장소 정보')});return}
     const eventLink=ev.target.closest('[data-event-day]');
-    if(eventLink){const d=state.days.find(x=>x.id===eventLink.dataset.eventDay);const e=d?.events?.[Number(eventLink.dataset.eventIndex)];if(e)openDetail(e);return}
+    if(eventLink){const d=state.days.find(x=>x.id===eventLink.dataset.eventDay);const e=d?.events?.[Number(eventLink.dataset.eventIndex)];if(e)openDetail({...e,mapQuery:`${areaContext(d)} ${e.title||''}`});return}
     const bookingLink=ev.target.closest('[data-booking]');
     if(bookingLink){const b=state.bookings.find(x=>x.id===bookingLink.dataset.booking);if(b)openDetail(b,true)}
   });
@@ -254,11 +266,11 @@ function bindDetailLinks(){
 
 function openDetail(item,isBooking=false){
   const title=localized(item,'title')||t('地點資料','장소 정보');
-  const query=`${title} Seoul`;
+  const query=`${item.mapQuery||title} Seoul`;
   const mapUrl=item.googleMaps||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
   $('#detailTitle').textContent=title;
   if(isBooking){
-    $('#detailIntro').innerHTML=`<div class="detail-kv">${(item.details||[]).map(r=>`<div>${esc(r.label||'')}</div><div class="${r.sensitive?'sensitive':''}">${bookingValueHtml(r)}</div>`).join('')}</div>${(item.details||[]).some(r=>r.sensitive)?`<button class="reveal-btn" id="detailReveal">${t('顯示／隱藏敏感資料','민감한 정보 표시/숨기기')}</button>`:''}`;
+    $('#detailIntro').innerHTML=`<div class="detail-kv">${(item.details||[]).map(r=>`<div>${esc(r.label||'')}</div><div class="${r.sensitive?'sensitive':''}">${bookingValueHtml(r)}</div>`).join('')}</div>${(item.details||[]).some(r=>r.sensitive)?`<button class="secondary-btn card-action-btn" id="detailReveal">${t('顯示／隱藏敏感資料','민감한 정보 표시/숨기기')}</button>`:''}`;
     const reveal=$('#detailReveal');if(reveal)reveal.onclick=()=>$('#detailIntro').querySelectorAll('.sensitive').forEach(x=>x.classList.toggle('reveal'));
   }else $('#detailIntro').innerHTML=localized(item,'note')?`<p>${phoneHtml(localized(item,'note'))}</p>`:`<p class="muted">${t('按下方按鈕可在手機地圖 App 查看路線及更多資料。','아래 버튼을 눌러 지도 앱에서 길찾기와 상세 정보를 확인하세요.')}</p>`;
   $('#detailMap').src=`https://www.google.com/maps?q=${encodeURIComponent(query)}&hl=${state.language==='ko'?'ko':'zh-TW'}&output=embed`;
@@ -294,7 +306,7 @@ function renderDayDetail(id){
 function revealBlock(value){return `<span class="sensitive">${esc(value||'—')}</span>`}
 function bookingCard(b){
   const rows=(b.details||[]).map(r=>`<div>${esc(r.label)}</div><div class="${r.sensitive?'sensitive':''}">${bookingValueHtml(r)}</div>`).join('');
-  return `<article class="booking-card"><div class="booking-label">${esc(b.type||t('預訂','예약'))}</div><button class="booking-value item-link" data-booking="${esc(b.id)}">${esc(localized(b,'title')||'')}</button><div class="kv">${rows}</div><button class="link-btn detail-link" data-booking="${esc(b.id)}">${t('查看資料','정보 보기')}</button>${(b.details||[]).some(r=>r.sensitive)?`<button class="reveal-btn">${t('顯示／隱藏敏感資料','민감한 정보 표시/숨기기')}</button>`:''}</article>`;
+  return `<article class="booking-card"><div class="booking-label">${esc(b.type||t('預訂','예약'))}</div><button class="booking-value item-link" data-booking="${esc(b.id)}">${esc(localized(b,'title')||'')}</button><div class="kv">${rows}</div>${(b.details||[]).some(r=>r.sensitive)?`<button class="secondary-btn card-action-btn reveal-btn">${t('顯示／隱藏敏感資料','민감한 정보 표시/숨기기')}</button>`:''}</article>`;
 }
 function renderBookings(){
   content.innerHTML=`<div class="notice danger">此頁包含私人預訂資料。請勿在公共裝置上長時間顯示。</div><div class="section-title">旅程預訂</div><div class="booking-grid">${state.bookings.map(bookingCard).join('')}</div>`;
