@@ -25,7 +25,7 @@ const provider = new GoogleAuthProvider();
 await setPersistence(auth, browserLocalPersistence);
 
 const TRIP_ID = 'seoul-2026';
-let state = { user:null, trip:null, days:[], bookings:[], page:'today', isAdmin:false };
+let state = { user:null, trip:null, days:[], bookings:[], page:'today', isAdmin:false, language:localStorage.getItem('displayLanguage')==='ko'?'ko':'zh' };
 let stopAccessListener=null;
 let stopApprovalListener=null;
 let installPrompt=null;
@@ -91,6 +91,17 @@ if(themeMedia.addEventListener) themeMedia.addEventListener('change',handleSyste
 else themeMedia.addListener?.(handleSystemThemeChange);
 
 function esc(v=''){return String(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+function t(zh,ko){return state.language==='ko'?ko:zh}
+function localized(obj,key){return state.language==='ko'?(obj?.[`${key}Ko`]||obj?.[`${key}Korean`]||(key==='title'?obj?.koreanName:null)||obj?.[key]):obj?.[key]}
+function phoneHtml(value){
+  const text=String(value||''),re=/\+?\d[\d\s().-]{6,}\d/g;let out='',last=0,match;
+  while((match=re.exec(text))){out+=esc(text.slice(last,match.index));const tel=match[0].replace(/[^\d+]/g,'');out+=`<a class="phone-link" href="tel:${esc(tel)}">${esc(match[0])}</a>`;last=re.lastIndex}
+  return out+esc(text.slice(last));
+}
+function bookingValueHtml(row){
+  const phoneLabel=/電話|手機|聯絡|phone|telephone|tel/i.test(String(row?.label||''));
+  return phoneLabel?phoneHtml(row?.value):esc(row?.value||'');
+}
 function money(n){return new Intl.NumberFormat('zh-HK',{maximumFractionDigits:2}).format(n||0)}
 function fmtDate(d){return new Intl.DateTimeFormat('zh-HK',{month:'numeric',day:'numeric',weekday:'short'}).format(d)}
 
@@ -133,6 +144,8 @@ function clearPrivateState(){
   state.isAdmin=false;
   state.page='today';
   content.replaceChildren();
+  $('#detailMap').removeAttribute('src'); $('#detailIntro').replaceChildren();
+  if($('#detailDialog').open)$('#detailDialog').close();
 }
 
 function showAccessState(status){
@@ -201,7 +214,10 @@ async function loadTrip(){
 function render(){
   if(state.page!=='more'){stopApprovalListener?.();stopApprovalListener=null}
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===state.page));
-  const titles={today:'今日',days:'行程',bookings:'預訂',money:'匯率',more:'更多'}; $('#pageTitle').textContent=titles[state.page];
+  const titles=state.language==='ko'?{today:'오늘',days:'일정',bookings:'예약',money:'환율',more:'더보기'}:{today:'今日',days:'行程',bookings:'預訂',money:'匯率',more:'更多'}; $('#pageTitle').textContent=titles[state.page];
+  const nav=state.language==='ko'?['오늘','일정','예약','환율','더보기']:['今日','行程','預訂','匯率','更多'];
+  document.querySelectorAll('.nav-item small').forEach((el,i)=>el.textContent=nav[i]);
+  $('#languageBtn').textContent=state.language==='ko'?'中文':'한국어';
   if(!state.trip && state.page!=='more') return renderEmpty();
   ({today:renderToday,days:renderDays,bookings:renderBookings,money:renderMoney,more:renderMore}[state.page])();
 }
@@ -217,39 +233,60 @@ function targetDay(){
   return state.days.find(d=>d.date===ymd)||state.days[0];
 }
 
-function eventHtml(e){
+function eventHtml(e,dayId,index){
   const badges=(e.tags||[]).map(t=>`<span class="badge ${t==='必去'?'must':t==='可略過'?'optional':''}">${esc(t)}</span>`).join('');
   const maps=[];
   if(e.googleMaps) maps.push(`<a class="link-btn" target="_blank" rel="noopener" href="${esc(e.googleMaps)}">Google 地圖</a>`);
   if(e.naverMaps) maps.push(`<a class="link-btn" target="_blank" rel="noopener" href="${esc(e.naverMaps)}">Naver Map</a>`);
-  return `<div class="event"><div class="time">${esc(e.time||'')}</div><div><div class="event-title">${esc(e.title||'')}</div>${e.note?`<div class="event-note">${esc(e.note)}</div>`:''}${badges}${maps.join('')}</div></div>`;
+  return `<div class="event"><div class="time">${esc(e.time||'')}</div><div><button class="event-title item-link" data-event-day="${esc(dayId)}" data-event-index="${index}">${esc(localized(e,'title')||'')}</button>${e.note?`<div class="event-note">${phoneHtml(localized(e,'note'))}</div>`:''}${badges}<button class="link-btn detail-link" data-event-day="${esc(dayId)}" data-event-index="${index}">${t('地圖及資料','지도 및 정보')}</button>${maps.join('')}</div></div>`;
+}
+
+function bindDetailLinks(){
+  document.querySelectorAll('[data-event-day]').forEach(el=>el.onclick=()=>{const d=state.days.find(x=>x.id===el.dataset.eventDay);const e=d?.events?.[Number(el.dataset.eventIndex)];if(e)openDetail(e)});
+  document.querySelectorAll('[data-booking]').forEach(el=>el.onclick=()=>{const b=state.bookings.find(x=>x.id===el.dataset.booking);if(b)openDetail(b,true)});
+}
+
+function openDetail(item,isBooking=false){
+  const title=localized(item,'title')||t('地點資料','장소 정보');
+  const query=`${title} Seoul`;
+  const mapUrl=item.googleMaps||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  $('#detailTitle').textContent=title;
+  if(isBooking){
+    $('#detailIntro').innerHTML=`<div class="detail-kv">${(item.details||[]).map(r=>`<div>${esc(r.label||'')}</div><div class="${r.sensitive?'sensitive':''}">${bookingValueHtml(r)}</div>`).join('')}</div>${(item.details||[]).some(r=>r.sensitive)?`<button class="reveal-btn" id="detailReveal">${t('顯示／隱藏敏感資料','민감한 정보 표시/숨기기')}</button>`:''}`;
+    const reveal=$('#detailReveal');if(reveal)reveal.onclick=()=>$('#detailIntro').querySelectorAll('.sensitive').forEach(x=>x.classList.toggle('reveal'));
+  }else $('#detailIntro').innerHTML=localized(item,'note')?`<p>${phoneHtml(localized(item,'note'))}</p>`:`<p class="muted">${t('按下方按鈕可在手機地圖 App 查看路線及更多資料。','아래 버튼을 눌러 지도 앱에서 길찾기와 상세 정보를 확인하세요.')}</p>`;
+  $('#detailMap').src=`https://www.google.com/maps?q=${encodeURIComponent(query)}&hl=${state.language==='ko'?'ko':'zh-TW'}&output=embed`;
+  $('#openGoogleMaps').href=mapUrl; $('#openGoogleMaps').textContent=t('在 Google 地圖開啟','Google 지도에서 열기'); $('#closeDetailBottom').textContent=t('關閉','닫기');
+  $('#detailDialog').showModal();
 }
 
 function renderToday(){
   const d=targetDay(); if(!d)return renderEmpty();
-  content.innerHTML=`<section class="hero"><div class="sub">${esc(d.dateLabel||d.date)}</div><div class="big">${esc(d.area||'首爾')}</div><div class="meta">${esc(d.summary||'')}</div></section>
-  <div class="section-title">今日行程</div><div class="card timeline">${(d.events||[]).map(eventHtml).join('')}</div>`;
+  content.innerHTML=`<section class="hero"><div class="sub">${esc(d.dateLabel||d.date)}</div><div class="big">${esc(localized(d,'area')||'首爾')}</div><div class="meta">${esc(localized(d,'summary')||'')}</div></section>
+  <div class="section-title">${t('今日行程','오늘 일정')}</div><div class="card timeline">${(d.events||[]).map((e,i)=>eventHtml(e,d.id,i)).join('')}</div>`;bindDetailLinks();
 }
 
 function renderDays(){
-  content.innerHTML=state.days.map(d=>`<div class="card day-card" data-day="${esc(d.id)}"><div class="day-row"><div><div class="day-date">${esc(d.dateLabel||d.date)}</div><div class="day-area">${esc(d.area||'')}</div></div><div class="chev">›</div></div></div>`).join('');
+  content.innerHTML=state.days.map(d=>`<div class="card day-card" data-day="${esc(d.id)}"><div class="day-row"><div><div class="day-date">${esc(d.dateLabel||d.date)}</div><div class="day-area">${esc(localized(d,'area')||'')}</div></div><div class="chev">›</div></div></div>`).join('');
   document.querySelectorAll('[data-day]').forEach(el=>el.onclick=()=>renderDayDetail(el.dataset.day));
 }
 function renderDayDetail(id){
   const d=state.days.find(x=>x.id===id); if(!d)return;
   $('#pageTitle').textContent=d.dateLabel||d.date;
-  content.innerHTML=`<button class="secondary-btn" id="backDays">← 返回全部行程</button><section class="hero" style="margin-top:12px"><div class="sub">${esc(d.dateLabel||'')}</div><div class="big">${esc(d.area||'')}</div><div class="meta">${esc(d.summary||'')}</div></section><div class="card timeline">${(d.events||[]).map(eventHtml).join('')}</div>`;
+  content.innerHTML=`<button class="secondary-btn" id="backDays">← ${t('返回全部行程','전체 일정으로')}</button><section class="hero" style="margin-top:12px"><div class="sub">${esc(d.dateLabel||'')}</div><div class="big">${esc(localized(d,'area')||'')}</div><div class="meta">${esc(localized(d,'summary')||'')}</div></section><div class="card timeline">${(d.events||[]).map((e,i)=>eventHtml(e,d.id,i)).join('')}</div>`;
   $('#backDays').onclick=()=>{state.page='days';render()};
+  bindDetailLinks();
 }
 
 function revealBlock(value){return `<span class="sensitive">${esc(value||'—')}</span>`}
 function bookingCard(b){
-  const rows=(b.details||[]).map(r=>`<div>${esc(r.label)}</div><div class="${r.sensitive?'sensitive':''}">${esc(r.value)}</div>`).join('');
-  return `<article class="booking-card"><div class="booking-label">${esc(b.type||'預訂')}</div><div class="booking-value">${esc(b.title||'')}</div><div class="kv">${rows}</div>${(b.details||[]).some(r=>r.sensitive)?'<button class="reveal-btn">顯示／隱藏敏感資料</button>':''}</article>`;
+  const rows=(b.details||[]).map(r=>`<div>${esc(r.label)}</div><div class="${r.sensitive?'sensitive':''}">${bookingValueHtml(r)}</div>`).join('');
+  return `<article class="booking-card"><div class="booking-label">${esc(b.type||t('預訂','예약'))}</div><button class="booking-value item-link" data-booking="${esc(b.id)}">${esc(localized(b,'title')||'')}</button><div class="kv">${rows}</div><button class="link-btn detail-link" data-booking="${esc(b.id)}">${t('查看資料','정보 보기')}</button>${(b.details||[]).some(r=>r.sensitive)?`<button class="reveal-btn">${t('顯示／隱藏敏感資料','민감한 정보 표시/숨기기')}</button>`:''}</article>`;
 }
 function renderBookings(){
   content.innerHTML=`<div class="notice danger">此頁包含私人預訂資料。請勿在公共裝置上長時間顯示。</div><div class="section-title">旅程預訂</div><div class="booking-grid">${state.bookings.map(bookingCard).join('')}</div>`;
   document.querySelectorAll('.reveal-btn').forEach(btn=>btn.onclick=()=>btn.closest('.booking-card').querySelectorAll('.sensitive').forEach(x=>x.classList.toggle('reveal')));
+  bindDetailLinks();
 }
 
 function renderMoney(){
@@ -352,6 +389,9 @@ $('#profileBtn').onclick=()=>$('#profileDialog').showModal(); $('#closeProfile')
 $('#logoutBtn').onclick=()=>signOut(auth).then(()=>$('#profileDialog').close());
 $('#accessLogoutBtn').onclick=()=>signOut(auth);
 $('#retryAccessBtn').onclick=resolveAccess;
+$('#languageBtn').onclick=()=>{state.language=state.language==='ko'?'zh':'ko';localStorage.setItem('displayLanguage',state.language);render()};
+$('#closeDetail').onclick=()=>{$('#detailMap').removeAttribute('src');$('#detailDialog').close()};
+$('#closeDetailBottom').onclick=()=>{$('#detailMap').removeAttribute('src');$('#detailDialog').close()};
 $('#closeInstall').onclick=()=>$('#installDialog').close();
 $('#confirmInstallHelp').onclick=()=>$('#installDialog').close();
 

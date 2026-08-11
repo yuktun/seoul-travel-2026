@@ -49,7 +49,7 @@
           <div class="eyebrow">🇰🇷 SEOUL · 2026</div>
           <h1 id="pageTitle">今日</h1>
         </div>
-        <button id="profileBtn" class="icon-btn" aria-label="開啟帳戶資料">👤</button>
+        <div class="top-actions"><button id="languageBtn" class="language-btn" aria-label="切換顯示語言">한국어</button><button id="profileBtn" class="icon-btn" aria-label="開啟帳戶資料">👤</button></div>
       </header>
 
       <main id="content" class="content"></main>
@@ -73,6 +73,13 @@
       <div class="modal-head"><strong>加入主畫面</strong><button id="closeInstall" class="icon-btn" aria-label="關閉安裝說明">✕</button></div>
       <div id="installInstructions"></div>
       <button id="confirmInstallHelp" class="primary-btn full">知道了</button>
+    </dialog>
+
+    <dialog id="detailDialog" class="modal detail-modal">
+      <div class="modal-head"><strong id="detailTitle"></strong><button id="closeDetail" class="icon-btn" aria-label="關閉資料視窗">✕</button></div>
+      <div id="detailIntro" class="detail-intro"></div>
+      <iframe id="detailMap" class="detail-map" title="Google 地圖" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+      <div class="detail-actions"><a id="openGoogleMaps" class="primary-btn map-open-btn" target="_blank" rel="noopener">在 Google 地圖開啟</a><button id="closeDetailBottom" class="secondary-btn">關閉</button></div>
     </dialog>
   </div>
 
