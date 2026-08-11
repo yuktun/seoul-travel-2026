@@ -145,7 +145,7 @@ function clearPrivateState(){
   state.page='today';
   content.replaceChildren();
   $('#detailMap').removeAttribute('src'); $('#detailIntro').replaceChildren();
-  if($('#detailDialog').open)$('#detailDialog').close();
+  closeDetail();
 }
 
 function showAccessState(status){
@@ -242,8 +242,14 @@ function eventHtml(e,dayId,index){
 }
 
 function bindDetailLinks(){
-  document.querySelectorAll('[data-event-day]').forEach(el=>el.onclick=()=>{const d=state.days.find(x=>x.id===el.dataset.eventDay);const e=d?.events?.[Number(el.dataset.eventIndex)];if(e)openDetail(e)});
-  document.querySelectorAll('[data-booking]').forEach(el=>el.onclick=()=>{const b=state.bookings.find(x=>x.id===el.dataset.booking);if(b)openDetail(b,true)});
+  if(content.dataset.detailLinksBound)return;
+  content.dataset.detailLinksBound='true';
+  content.addEventListener('click',ev=>{
+    const eventLink=ev.target.closest('[data-event-day]');
+    if(eventLink){const d=state.days.find(x=>x.id===eventLink.dataset.eventDay);const e=d?.events?.[Number(eventLink.dataset.eventIndex)];if(e)openDetail(e);return}
+    const bookingLink=ev.target.closest('[data-booking]');
+    if(bookingLink){const b=state.bookings.find(x=>x.id===bookingLink.dataset.booking);if(b)openDetail(b,true)}
+  });
 }
 
 function openDetail(item,isBooking=false){
@@ -257,7 +263,14 @@ function openDetail(item,isBooking=false){
   }else $('#detailIntro').innerHTML=localized(item,'note')?`<p>${phoneHtml(localized(item,'note'))}</p>`:`<p class="muted">${t('按下方按鈕可在手機地圖 App 查看路線及更多資料。','아래 버튼을 눌러 지도 앱에서 길찾기와 상세 정보를 확인하세요.')}</p>`;
   $('#detailMap').src=`https://www.google.com/maps?q=${encodeURIComponent(query)}&hl=${state.language==='ko'?'ko':'zh-TW'}&output=embed`;
   $('#openGoogleMaps').href=mapUrl; $('#openGoogleMaps').textContent=t('在 Google 地圖開啟','Google 지도에서 열기'); $('#closeDetailBottom').textContent=t('關閉','닫기');
-  $('#detailDialog').showModal();
+  $('#koreanHelper').classList.toggle('hidden',state.language!=='ko');
+  $('#detailDialog').classList.remove('hidden'); $('#detailDialog').setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open'); $('#closeDetail').focus();
+}
+
+function closeDetail(){
+  $('#detailMap').removeAttribute('src'); $('#detailDialog').classList.add('hidden');
+  $('#detailDialog').setAttribute('aria-hidden','true'); document.body.classList.remove('modal-open');
 }
 
 function renderToday(){
@@ -389,9 +402,11 @@ $('#profileBtn').onclick=()=>$('#profileDialog').showModal(); $('#closeProfile')
 $('#logoutBtn').onclick=()=>signOut(auth).then(()=>$('#profileDialog').close());
 $('#accessLogoutBtn').onclick=()=>signOut(auth);
 $('#retryAccessBtn').onclick=resolveAccess;
-$('#languageBtn').onclick=()=>{state.language=state.language==='ko'?'zh':'ko';localStorage.setItem('displayLanguage',state.language);render()};
-$('#closeDetail').onclick=()=>{$('#detailMap').removeAttribute('src');$('#detailDialog').close()};
-$('#closeDetailBottom').onclick=()=>{$('#detailMap').removeAttribute('src');$('#detailDialog').close()};
+$('#languageBtn').onclick=()=>{state.language=state.language==='ko'?'zh':'ko';localStorage.setItem('displayLanguage',state.language);render();if(state.language==='ko'){const d=targetDay();const e=d?.events?.[0];if(e)openDetail(e)}};
+$('#closeDetail').onclick=closeDetail;
+$('#closeDetailBottom').onclick=closeDetail;
+$('#detailDialog').onclick=e=>{if(e.target===$('#detailDialog'))closeDetail()};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#detailDialog').classList.contains('hidden'))closeDetail()});
 $('#closeInstall').onclick=()=>$('#installDialog').close();
 $('#confirmInstallHelp').onclick=()=>$('#installDialog').close();
 
