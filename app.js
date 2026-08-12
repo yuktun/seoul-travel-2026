@@ -127,8 +127,6 @@ function effectiveThemeLabel(theme){
 }
 
 applyTheme();
-function syncAppHeight(){document.documentElement.style.setProperty('--app-height',`${Math.round(window.visualViewport?.height||window.innerHeight)}px`)}
-syncAppHeight();window.addEventListener('resize',syncAppHeight);window.addEventListener('orientationchange',syncAppHeight);window.addEventListener('pageshow',syncAppHeight);window.visualViewport?.addEventListener('resize',syncAppHeight);
 function handleSystemThemeChange(){
   if(getThemePreference()==='auto'){
     applyTheme('auto');
@@ -288,7 +286,6 @@ async function resolveAccess(){
       }
     }
     $('#accessView').classList.add('hidden'); $('#mainView').classList.remove('hidden');
-    syncAppHeight();requestAnimationFrame(()=>requestAnimationFrame(syncAppHeight));
     renderLoading(); await loadTrip(); render();
   }catch(e){showAccessState('error')}
 }
@@ -420,7 +417,8 @@ function bindTodayExtras(){const button=$('#newFact');if(button)button.onclick=(
 function weatherSectionHtml(){return `<section class="weather-card" aria-labelledby="weatherTitle"><div class="weather-head"><div><div class="weather-kicker">SEOUL WEATHER</div><h2 id="weatherTitle">${t('首爾六日天氣','서울 6일 날씨')}</h2></div><div class="weather-location">📍 Seoul</div></div><div id="weatherDays" class="weather-days"><div class="weather-loading">${t('正在更新天氣…','날씨 업데이트 중…')}</div></div><div class="weather-source">${t('昨日實況及最新預報','어제 날씨와 최신 예보')} · Open-Meteo</div></section>`}
 function weatherInfo(code){if(code===0)return ['☀️',t('晴朗','맑음')];if(code<=2)return ['🌤️',t('間中有雲','구름 조금')];if(code===3)return ['☁️',t('多雲','흐림')];if(code<=48)return ['🌫️',t('有霧','안개')];if(code<=57)return ['🌦️',t('毛毛雨','이슬비')];if(code<=67)return ['🌧️',t('下雨','비')];if(code<=77)return ['🌨️',t('下雪','눈')];if(code<=82)return ['🌦️',t('驟雨','소나기')];if(code<=86)return ['🌨️',t('驟雪','눈 소나기')];return ['⛈️',t('雷雨','뇌우')]}
 function weatherDayLabel(date,index){if(index===0)return t('昨日','어제');if(index===1)return t('今日','오늘');return new Intl.DateTimeFormat(state.language==='ko'?'ko-KR':'zh-HK',{weekday:'short',timeZone:'Asia/Seoul'}).format(new Date(`${date}T12:00:00+09:00`))}
-function renderWeather(data){const target=$('#weatherDays');if(!target)return;const daily=data?.daily;if(!daily?.time?.length)throw new Error('missing weather');target.innerHTML=daily.time.slice(0,6).map((date,index)=>{const [icon,label]=weatherInfo(daily.weather_code[index]);return `<article class="weather-day ${index===1?'today':''}"><div class="weather-day-name">${esc(weatherDayLabel(date,index))}</div><div class="weather-icon" aria-label="${esc(label)}">${icon}</div><div class="weather-condition">${esc(label)}</div><div class="weather-temp"><strong>${Math.round(daily.temperature_2m_max[index])}°</strong><span>${Math.round(daily.temperature_2m_min[index])}°</span></div><div class="weather-rain">${index>0?`💧 ${Math.round(daily.precipitation_probability_max[index]||0)}%`:t('實況','관측')}</div></article>`}).join('')}
+function weatherDateLabel(date){const [,month,day]=String(date).split('-');return `${Number(day)}/${Number(month)}`}
+function renderWeather(data){const target=$('#weatherDays');if(!target)return;const daily=data?.daily;if(!daily?.time?.length)throw new Error('missing weather');target.innerHTML=daily.time.slice(0,6).map((date,index)=>{const [icon,label]=weatherInfo(daily.weather_code[index]);return `<article class="weather-day ${index===1?'today':''}"><div class="weather-day-name">${esc(weatherDayLabel(date,index))}</div><div class="weather-date">${esc(weatherDateLabel(date))}</div><div class="weather-icon" aria-label="${esc(label)}">${icon}</div><div class="weather-condition">${esc(label)}</div><div class="weather-temp"><strong>${Math.round(daily.temperature_2m_max[index])}°</strong><span>${Math.round(daily.temperature_2m_min[index])}°</span></div><div class="weather-rain">${index>0?`💧 ${Math.round(daily.precipitation_probability_max[index]||0)}%`:t('實況','관측')}</div></article>`}).join('')}
 async function loadWeather(){if(weatherCache){renderWeather(weatherCache);return}try{const response=await fetch('https://api.open-meteo.com/v1/forecast?latitude=37.5665&longitude=126.9780&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FSeoul&past_days=1&forecast_days=5');if(!response.ok)throw new Error();weatherCache=await response.json();renderWeather(weatherCache)}catch(e){const target=$('#weatherDays');if(target)target.innerHTML=`<div class="weather-loading">${t('暫時無法取得天氣，請稍後再試。','날씨를 불러올 수 없습니다. 잠시 후 다시 시도하세요.')}</div>`}}
 
 function renderDays(){
