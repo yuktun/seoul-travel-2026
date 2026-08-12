@@ -77,7 +77,15 @@ const SEOUL_FACTS=[
   '韓國咖啡店不只是喝咖啡的地方，設計、甜品和拍照氣氛同樣重要。',
   '在首爾，同一條街往往能同時看見數百年古蹟與嶄新潮流，這正是城市的魅力。'
 ];
+const COUNTDOWN_MESSAGES=[
+  ['行李還未收拾，心已經飛到首爾。','準備好一起吃、逛、拍照和創造回憶吧！'],
+  ['首爾的街道、美食和驚喜正在等我們。','每天近一點，期待也多一點！'],
+  ['宮殿、市場、咖啡店和夜景已排好隊。','這趟旅程一定會有很多難忘故事！'],
+  ['倒數的不只是日子，還有滿滿的期待。','很快就可以一起踏上首爾街頭了！'],
+  ['把胃口、相機和好心情都準備好。','首爾之旅即將正式展開！']
+];
 let seoulFactIndex=Math.floor(Math.random()*SEOUL_FACTS.length);
+const countdownMessage=COUNTDOWN_MESSAGES[Math.floor(Math.random()*COUNTDOWN_MESSAGES.length)];
 let state = { user:null, trip:null, days:[], bookings:[], page:'today', isAdmin:false, language:localStorage.getItem('displayLanguage')==='ko'?'ko':'zh' };
 let weatherCache=null;
 let stopAccessListener=null;
@@ -89,6 +97,12 @@ const $ = s => document.querySelector(s);
 const content = $('#content');
 const themeMedia = window.matchMedia('(prefers-color-scheme: dark)');
 const THEME_KEY = 'themePreference';
+
+function syncScreenHeight(){
+  const iphoneStandalone=/iPhone/i.test(navigator.userAgent)&&navigator.standalone===true;
+  document.documentElement.style.setProperty('--screen-height',`${Math.round(iphoneStandalone?screen.height:window.innerHeight)}px`);
+}
+syncScreenHeight();window.addEventListener('resize',syncScreenHeight);window.addEventListener('orientationchange',syncScreenHeight);window.addEventListener('pageshow',syncScreenHeight);
 
 function getThemePreference(){
   const pref = localStorage.getItem(THEME_KEY);
@@ -401,7 +415,7 @@ function renderToday(){
   if(today.phase==='empty')return renderEmpty();
   let main='';
   if(today.phase==='before'){
-    main=`<section class="countdown-hero"><div class="countdown-kicker">旅程即將開始</div><div class="countdown-number">${today.days}</div><div class="countdown-unit">日後出發首爾</div><div class="countdown-message">行李還未收拾，心已經飛到首爾。<br>準備好一起吃、逛、拍照和創造回憶吧！</div></section>`;
+    main=`<section class="countdown-hero"><div class="countdown-kicker">旅程即將開始</div><div class="countdown-number">${today.days}</div><div class="countdown-unit">日後出發首爾</div><div class="countdown-message">${esc(countdownMessage[0])}<br>${esc(countdownMessage[1])}</div></section>`;
   }else if(today.phase==='after'){
     main='<section class="countdown-hero trip-complete"><div class="countdown-kicker">旅程已完成</div><div class="countdown-number">서울</div><div class="countdown-unit">回憶已收藏</div><div class="countdown-message">謝謝這趟旅程帶來的美食、笑聲與故事。<br>隨時打開行程頁，再次回味首爾時光。</div></section>';
   }else{
