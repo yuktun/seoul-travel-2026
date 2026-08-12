@@ -79,6 +79,7 @@ const SEOUL_FACTS=[
 ];
 let seoulFactIndex=Math.floor(Math.random()*SEOUL_FACTS.length);
 let state = { user:null, trip:null, days:[], bookings:[], page:'today', isAdmin:false, language:localStorage.getItem('displayLanguage')==='ko'?'ko':'zh' };
+let weatherCache=null;
 let stopAccessListener=null;
 let stopApprovalListener=null;
 let installPrompt=null;
@@ -126,6 +127,8 @@ function effectiveThemeLabel(theme){
 }
 
 applyTheme();
+function syncAppHeight(){document.documentElement.style.setProperty('--app-height',`${Math.round(window.visualViewport?.height||window.innerHeight)}px`)}
+syncAppHeight();window.addEventListener('resize',syncAppHeight);window.addEventListener('orientationchange',syncAppHeight);window.addEventListener('pageshow',syncAppHeight);window.visualViewport?.addEventListener('resize',syncAppHeight);
 function handleSystemThemeChange(){
   if(getThemePreference()==='auto'){
     applyTheme('auto');
@@ -285,6 +288,7 @@ async function resolveAccess(){
       }
     }
     $('#accessView').classList.add('hidden'); $('#mainView').classList.remove('hidden');
+    syncAppHeight();requestAnimationFrame(()=>requestAnimationFrame(syncAppHeight));
     renderLoading(); await loadTrip(); render();
   }catch(e){showAccessState('error')}
 }
@@ -325,15 +329,15 @@ function renderEmpty(){
   $('#goImport').onclick=()=>{state.page='more';render()};
 }
 
+function seoulDateString(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())}
 function targetDay(){
   if(!state.days.length) return null;
-  const now=new Date(); const ymd=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
-  return state.days.find(d=>d.date===ymd)||null;
+  return state.days.find(d=>d.date===seoulDateString())||null;
 }
 function localTripDate(value){const [year,month,day]=String(value||'').split('-').map(Number);return new Date(year,month-1,day)}
 function tripTodayState(){
   if(!state.days.length)return {phase:'empty'};
-  const now=new Date();now.setHours(0,0,0,0);
+  const now=localTripDate(seoulDateString());
   const first=localTripDate(state.days[0].date),last=localTripDate(state.days[state.days.length-1].date);
   if(now<first)return {phase:'before',days:Math.ceil((first-now)/86400000)};
   if(now>last)return {phase:'after'};
@@ -398,19 +402,26 @@ function closeDetail(){
 function renderToday(){
   const today=tripTodayState();
   if(today.phase==='empty')return renderEmpty();
+  let main='';
   if(today.phase==='before'){
-    content.innerHTML=`<section class="countdown-hero"><div class="countdown-kicker">旅程即將開始</div><div class="countdown-number">${today.days}</div><div class="countdown-unit">日後出發首爾</div><div class="countdown-message">行李還未收拾，心已經飛到首爾。<br>準備好一起吃、逛、拍照和創造回憶吧！</div></section><section class="card fact-card"><div class="fact-label">🇰🇷 今日首爾趣聞</div><p id="seoulFact">${esc(SEOUL_FACTS[seoulFactIndex])}</p><button class="secondary-btn fact-next" id="newFact">換一則趣聞</button></section>`;
-    $('#newFact').onclick=()=>{let next=seoulFactIndex;while(next===seoulFactIndex)next=Math.floor(Math.random()*SEOUL_FACTS.length);seoulFactIndex=next;$('#seoulFact').textContent=SEOUL_FACTS[next]};
-    return;
+    main=`<section class="countdown-hero"><div class="countdown-kicker">旅程即將開始</div><div class="countdown-number">${today.days}</div><div class="countdown-unit">日後出發首爾</div><div class="countdown-message">行李還未收拾，心已經飛到首爾。<br>準備好一起吃、逛、拍照和創造回憶吧！</div></section>`;
+  }else if(today.phase==='after'){
+    main='<section class="countdown-hero trip-complete"><div class="countdown-kicker">旅程已完成</div><div class="countdown-number">서울</div><div class="countdown-unit">回憶已收藏</div><div class="countdown-message">謝謝這趟旅程帶來的美食、笑聲與故事。<br>隨時打開行程頁，再次回味首爾時光。</div></section>';
+  }else{
+    const d=today.day;if(!d)return renderEmpty();
+    main=`<section class="hero"><div class="sub">${esc(d.dateLabel||d.date)}</div><div class="big">${esc(localized(d,'area')||'首爾')}</div><div class="meta">${esc(localized(d,'summary')||'')}</div></section><div class="section-title section-title-row"><span>${t('今日行程','오늘 일정')}</span>${state.isAdmin?`<button class="secondary-btn admin-add-btn" data-add-event="${esc(d.id)}">＋ 新增行程</button>`:''}</div><div class="card timeline">${(d.events||[]).map((e,i)=>eventHtml(e,d.id,i)).join('')||'<div class="muted small">尚未加入行程。</div>'}</div>`;
   }
-  if(today.phase==='after'){
-    content.innerHTML='<section class="countdown-hero trip-complete"><div class="countdown-kicker">旅程已完成</div><div class="countdown-number">서울</div><div class="countdown-unit">回憶已收藏</div><div class="countdown-message">謝謝這趟旅程帶來的美食、笑聲與故事。<br>隨時打開行程頁，再次回味首爾時光。</div></section>';
-    return;
-  }
-  const d=today.day;if(!d)return renderEmpty();
-  content.innerHTML=`<section class="hero"><div class="sub">${esc(d.dateLabel||d.date)}</div><div class="big">${esc(localized(d,'area')||'首爾')}</div><div class="meta">${esc(localized(d,'summary')||'')}</div></section>
-  <div class="section-title section-title-row"><span>${t('今日行程','오늘 일정')}</span>${state.isAdmin?`<button class="secondary-btn admin-add-btn" data-add-event="${esc(d.id)}">＋ 新增行程</button>`:''}</div><div class="card timeline">${(d.events||[]).map((e,i)=>eventHtml(e,d.id,i)).join('')||'<div class="muted small">尚未加入行程。</div>'}</div>`;bindDetailLinks();
+  content.innerHTML=`${weatherSectionHtml()}${main}${factSectionHtml()}`;
+  bindDetailLinks();bindTodayExtras();loadWeather();
 }
+
+function factSectionHtml(){return `<section class="card fact-card"><div class="fact-label">🇰🇷 ${t('今日首爾趣聞','오늘의 서울 이야기')}</div><p id="seoulFact">${esc(SEOUL_FACTS[seoulFactIndex])}</p><button class="secondary-btn fact-next" id="newFact">${t('換一則趣聞','다른 이야기 보기')}</button></section>`}
+function bindTodayExtras(){const button=$('#newFact');if(button)button.onclick=()=>{let next=seoulFactIndex;while(next===seoulFactIndex)next=Math.floor(Math.random()*SEOUL_FACTS.length);seoulFactIndex=next;$('#seoulFact').textContent=SEOUL_FACTS[next]}}
+function weatherSectionHtml(){return `<section class="weather-card" aria-labelledby="weatherTitle"><div class="weather-head"><div><div class="weather-kicker">SEOUL WEATHER</div><h2 id="weatherTitle">${t('首爾六日天氣','서울 6일 날씨')}</h2></div><div class="weather-location">📍 Seoul</div></div><div id="weatherDays" class="weather-days"><div class="weather-loading">${t('正在更新天氣…','날씨 업데이트 중…')}</div></div><div class="weather-source">${t('昨日實況及最新預報','어제 날씨와 최신 예보')} · Open-Meteo</div></section>`}
+function weatherInfo(code){if(code===0)return ['☀️',t('晴朗','맑음')];if(code<=2)return ['🌤️',t('間中有雲','구름 조금')];if(code===3)return ['☁️',t('多雲','흐림')];if(code<=48)return ['🌫️',t('有霧','안개')];if(code<=57)return ['🌦️',t('毛毛雨','이슬비')];if(code<=67)return ['🌧️',t('下雨','비')];if(code<=77)return ['🌨️',t('下雪','눈')];if(code<=82)return ['🌦️',t('驟雨','소나기')];if(code<=86)return ['🌨️',t('驟雪','눈 소나기')];return ['⛈️',t('雷雨','뇌우')]}
+function weatherDayLabel(date,index){if(index===0)return t('昨日','어제');if(index===1)return t('今日','오늘');return new Intl.DateTimeFormat(state.language==='ko'?'ko-KR':'zh-HK',{weekday:'short',timeZone:'Asia/Seoul'}).format(new Date(`${date}T12:00:00+09:00`))}
+function renderWeather(data){const target=$('#weatherDays');if(!target)return;const daily=data?.daily;if(!daily?.time?.length)throw new Error('missing weather');target.innerHTML=daily.time.slice(0,6).map((date,index)=>{const [icon,label]=weatherInfo(daily.weather_code[index]);return `<article class="weather-day ${index===1?'today':''}"><div class="weather-day-name">${esc(weatherDayLabel(date,index))}</div><div class="weather-icon" aria-label="${esc(label)}">${icon}</div><div class="weather-condition">${esc(label)}</div><div class="weather-temp"><strong>${Math.round(daily.temperature_2m_max[index])}°</strong><span>${Math.round(daily.temperature_2m_min[index])}°</span></div><div class="weather-rain">${index>0?`💧 ${Math.round(daily.precipitation_probability_max[index]||0)}%`:t('實況','관측')}</div></article>`}).join('')}
+async function loadWeather(){if(weatherCache){renderWeather(weatherCache);return}try{const response=await fetch('https://api.open-meteo.com/v1/forecast?latitude=37.5665&longitude=126.9780&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FSeoul&past_days=1&forecast_days=5');if(!response.ok)throw new Error();weatherCache=await response.json();renderWeather(weatherCache)}catch(e){const target=$('#weatherDays');if(target)target.innerHTML=`<div class="weather-loading">${t('暫時無法取得天氣，請稍後再試。','날씨를 불러올 수 없습니다. 잠시 후 다시 시도하세요.')}</div>`}}
 
 function renderDays(){
   content.innerHTML=state.days.map(d=>`<div class="card day-card" data-day="${esc(d.id)}"><div class="day-row"><div><div class="day-date">${esc(d.dateLabel||d.date)}</div><div class="day-area">${esc(localized(d,'area')||'')}</div></div><div class="chev">›</div></div></div>`).join('');
