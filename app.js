@@ -414,7 +414,7 @@ function renderToday(){
 
 function factSectionHtml(){return `<section class="card fact-card"><div class="fact-label">🇰🇷 ${t('今日首爾趣聞','오늘의 서울 이야기')}</div><p id="seoulFact">${esc(SEOUL_FACTS[seoulFactIndex])}</p><button class="secondary-btn fact-next" id="newFact">${t('換一則趣聞','다른 이야기 보기')}</button></section>`}
 function bindTodayExtras(){const button=$('#newFact');if(button)button.onclick=()=>{let next=seoulFactIndex;while(next===seoulFactIndex)next=Math.floor(Math.random()*SEOUL_FACTS.length);seoulFactIndex=next;$('#seoulFact').textContent=SEOUL_FACTS[next]}}
-function weatherSectionHtml(){return `<section class="weather-card" aria-labelledby="weatherTitle"><div class="weather-head"><div><div class="weather-kicker">SEOUL WEATHER</div><h2 id="weatherTitle">${t('首爾六日天氣','서울 6일 날씨')}</h2></div><div class="weather-location">📍 Seoul</div></div><div id="weatherDays" class="weather-days"><div class="weather-loading">${t('正在更新天氣…','날씨 업데이트 중…')}</div></div><div class="weather-source">${t('昨日實況及最新預報','어제 날씨와 최신 예보')} · Open-Meteo</div></section>`}
+function weatherSectionHtml(){return `<section class="weather-card" aria-labelledby="weatherTitle"><div class="weather-head"><h2 id="weatherTitle">🌤️ ${t('首爾天氣','서울 날씨')}</h2><span>Seoul</span></div><div id="weatherDays" class="weather-days"><div class="weather-loading">${t('正在更新天氣…','날씨 업데이트 중…')}</div></div><div class="weather-source">Open-Meteo</div></section>`}
 function weatherInfo(code){if(code===0)return ['☀️',t('晴朗','맑음')];if(code<=2)return ['🌤️',t('間中有雲','구름 조금')];if(code===3)return ['☁️',t('多雲','흐림')];if(code<=48)return ['🌫️',t('有霧','안개')];if(code<=57)return ['🌦️',t('毛毛雨','이슬비')];if(code<=67)return ['🌧️',t('下雨','비')];if(code<=77)return ['🌨️',t('下雪','눈')];if(code<=82)return ['🌦️',t('驟雨','소나기')];if(code<=86)return ['🌨️',t('驟雪','눈 소나기')];return ['⛈️',t('雷雨','뇌우')]}
 function weatherDayLabel(date,index){if(index===0)return t('昨日','어제');if(index===1)return t('今日','오늘');return new Intl.DateTimeFormat(state.language==='ko'?'ko-KR':'zh-HK',{weekday:'short',timeZone:'Asia/Seoul'}).format(new Date(`${date}T12:00:00+09:00`))}
 function weatherDateLabel(date){const [,month,day]=String(date).split('-');return `${Number(day)}/${Number(month)}`}
@@ -603,7 +603,7 @@ async function importPrivateData(ev){
   }catch(e){status.textContent='❌ 匯入失敗：'+e.message}
 }
 
-document.querySelectorAll('.nav-item').forEach(btn=>btn.onclick=()=>{state.page=btn.dataset.page;render()});
+document.querySelectorAll('.nav-item').forEach(btn=>{btn.onclick=()=>{state.page=btn.dataset.page;render()};btn.ondblclick=event=>event.preventDefault()});
 $('#profileBtn').onclick=()=>$('#profileDialog').showModal(); $('#closeProfile').onclick=()=>$('#profileDialog').close();
 $('#logoutBtn').onclick=()=>signOut(auth).then(()=>$('#profileDialog').close());
 $('#accessLogoutBtn').onclick=()=>signOut(auth);
