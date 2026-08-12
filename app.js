@@ -98,12 +98,6 @@ const content = $('#content');
 const themeMedia = window.matchMedia('(prefers-color-scheme: dark)');
 const THEME_KEY = 'themePreference';
 
-function syncScreenHeight(){
-  const iphoneStandalone=/iPhone/i.test(navigator.userAgent)&&navigator.standalone===true;
-  document.documentElement.style.setProperty('--screen-height',`${Math.round(iphoneStandalone?screen.height:window.innerHeight)}px`);
-}
-syncScreenHeight();window.addEventListener('resize',syncScreenHeight);window.addEventListener('orientationchange',syncScreenHeight);window.addEventListener('pageshow',syncScreenHeight);
-
 function getThemePreference(){
   const pref = localStorage.getItem(THEME_KEY);
   return ['auto','day','night'].includes(pref) ? pref : 'auto';
