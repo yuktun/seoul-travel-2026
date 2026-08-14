@@ -154,6 +154,9 @@ if(themeMedia.addEventListener) themeMedia.addEventListener('change',handleSyste
 else themeMedia.addListener?.(handleSystemThemeChange);
 
 function esc(v=''){return String(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+function externalUrl(value){try{const url=new URL(String(value||''));return ['http:','https:'].includes(url.protocol)?url.href:''}catch(e){return ''}}
+function editorUrl(selector,label){const value=$(selector).value.trim();if(value&&!externalUrl(value))throw new Error(`${label}必須以 http:// 或 https:// 開始。`);return value}
+function externalLinksHtml(item){const links=[];const google=externalUrl(item?.googleMaps),naver=externalUrl(item?.naverMaps),website=externalUrl(item?.website);if(google)links.push(`<a class="link-btn" target="_blank" rel="noopener" href="${esc(google)}">Google 地圖</a>`);if(naver)links.push(`<a class="link-btn" target="_blank" rel="noopener" href="${esc(naver)}">Naver Map</a>`);if(website)links.push(`<a class="link-btn" target="_blank" rel="noopener" href="${esc(website)}">網站／預訂</a>`);return links.join('')}
 function t(zh,ko){return state.language==='ko'?ko:zh}
 function localized(obj,key){return state.language==='ko'?(obj?.[`${key}Ko`]||obj?.[`${key}Korean`]||(key==='title'?obj?.koreanName:null)||obj?.[key]):obj?.[key]}
 function phoneHtml(value){
@@ -351,13 +354,10 @@ function tripTodayState(){
 
 function eventHtml(e,dayId,index){
   const badges=(e.tags||[]).map(t=>`<span class="badge ${t==='必去'?'must':t==='可略過'?'optional':''}">${esc(t)}</span>`).join('');
-  const maps=[];
-  if(e.googleMaps) maps.push(`<a class="link-btn" target="_blank" rel="noopener" href="${esc(e.googleMaps)}">Google 地圖</a>`);
-  if(e.naverMaps) maps.push(`<a class="link-btn" target="_blank" rel="noopener" href="${esc(e.naverMaps)}">Naver Map</a>`);
   const day=state.days.find(x=>x.id===dayId);
   const eventCount=day?.events?.length||0;
   const adminActions=state.isAdmin?`<div class="admin-item-actions"><div class="admin-order-actions" aria-label="調整行程次序"><button class="admin-text-btn order-btn" data-move-event="${esc(dayId)}" data-event-index="${index}" data-direction="-1" ${index===0?'disabled':''}>↑ 上移</button><button class="admin-text-btn order-btn" data-move-event="${esc(dayId)}" data-event-index="${index}" data-direction="1" ${index===eventCount-1?'disabled':''}>↓ 下移</button></div><div class="admin-edit-actions"><button class="admin-text-btn" data-edit-event="${esc(dayId)}" data-event-index="${index}">編輯</button><button class="admin-text-btn danger-text" data-delete-event="${esc(dayId)}" data-event-index="${index}">刪除</button></div></div>`:'';
-  return `<div class="event"><div class="time">${esc(e.time||'')}</div><div><button class="event-title item-link" data-event-day="${esc(dayId)}" data-event-index="${index}">${esc(localized(e,'title')||'')}</button>${e.note?`<div class="event-note">${eventNoteHtml(e,day)}</div>`:''}${badges}${maps.join('')}${adminActions}</div></div>`;
+  return `<div class="event"><div class="time">${esc(e.time||'')}</div><div><button class="event-title item-link" data-event-day="${esc(dayId)}" data-event-index="${index}">${esc(localized(e,'title')||'')}</button>${e.note?`<div class="event-note">${eventNoteHtml(e,day)}</div>`:''}${badges}${externalLinksHtml(e)}${adminActions}</div></div>`;
 }
 
 function bindDetailLinks(){
@@ -391,7 +391,7 @@ function bindDetailLinks(){
 function openDetail(item,isBooking=false){
   const title=localized(item,'title')||t('地點資料','장소 정보');
   const query=`${item.mapQuery||title} Seoul`;
-  const mapUrl=item.googleMaps||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  const mapUrl=externalUrl(item.googleMaps)||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
   $('#detailTitle').textContent=title;
   if(isBooking){
     $('#detailIntro').innerHTML=`<div class="detail-kv">${(item.details||[]).map(r=>`<div>${esc(r.label||'')}</div><div class="${r.sensitive?'sensitive':''}">${bookingValueHtml(r)}</div>`).join('')}</div>${(item.details||[]).some(r=>r.sensitive)?`<button class="secondary-btn card-action-btn" id="detailReveal">${t('顯示／隱藏敏感資料','민감한 정보 표시/숨기기')}</button>`:''}`;
@@ -450,7 +450,7 @@ function revealBlock(value){return `<span class="sensitive">${esc(value||'—')}
 function bookingCard(b,index){
   const rows=(b.details||[]).map(r=>`<div>${esc(r.label)}</div><div class="${r.sensitive?'sensitive':''}">${bookingValueHtml(r)}</div>`).join('');
   const adminActions=state.isAdmin?`<div class="admin-item-actions"><div class="admin-order-actions" aria-label="調整預訂次序"><button class="admin-text-btn order-btn" data-move-booking="${esc(b.id)}" data-direction="-1" ${index===0?'disabled':''}>↑ 上移</button><button class="admin-text-btn order-btn" data-move-booking="${esc(b.id)}" data-direction="1" ${index===state.bookings.length-1?'disabled':''}>↓ 下移</button></div><div class="admin-edit-actions"><button class="admin-text-btn" data-edit-booking="${esc(b.id)}">編輯</button><button class="admin-text-btn danger-text" data-delete-booking="${esc(b.id)}">刪除</button></div></div>`:'';
-  return `<article class="booking-card"><div class="booking-label">${esc(b.type||t('預訂','예약'))}</div><button class="booking-value item-link" data-booking="${esc(b.id)}">${esc(localized(b,'title')||'')}</button><div class="kv">${rows}</div>${(b.details||[]).some(r=>r.sensitive)?`<button class="secondary-btn card-action-btn reveal-btn">${t('顯示／隱藏敏感資料','민감한 정보 표시/숨기기')}</button>`:''}${adminActions}</article>`;
+  return `<article class="booking-card"><div class="booking-label">${esc(b.type||t('預訂','예약'))}</div><button class="booking-value item-link" data-booking="${esc(b.id)}">${esc(localized(b,'title')||'')}</button><div class="kv">${rows}</div>${externalLinksHtml(b)}${(b.details||[]).some(r=>r.sensitive)?`<button class="secondary-btn card-action-btn reveal-btn">${t('顯示／隱藏敏感資料','민감한 정보 표시/숨기기')}</button>`:''}${adminActions}</article>`;
 }
 function renderBookings(){
   content.innerHTML=`<div class="notice danger">此頁包含私人預訂資料。請勿在公共裝置上長時間顯示。</div><div class="section-title section-title-row"><span>旅程預訂</span>${state.isAdmin?'<button class="secondary-btn admin-add-btn" id="addBooking">＋ 新增預訂</button>':''}</div><div class="booking-grid">${state.bookings.map(bookingCard).join('')||'<div class="card muted small">尚未加入預訂。</div>'}</div>`;
@@ -468,6 +468,7 @@ function openEventEditor(dayId,index=null){
   $('#eventEditorFields').classList.remove('hidden');$('#bookingEditorFields').classList.add('hidden');
   $('#eventTime').value=event?.time||'';$('#eventTitle').value=event?.title||'';$('#eventNote').value=event?.note||'';
   $('#eventTags').value=(event?.tags||[]).join('、');showEditorError();$('#itemEditorDialog').showModal();
+  $('#eventGoogleMaps').value=event?.googleMaps||'';$('#eventNaverMaps').value=event?.naverMaps||'';$('#eventWebsite').value=event?.website||'';
 }
 function bookingDetailRow(row={},index=-1){
   return `<div class="booking-detail-row" data-original-detail="${index}"><input class="form-input detail-label" aria-label="資料名稱" placeholder="名稱，例如：日期" value="${esc(row.label||'')}"><input class="form-input detail-value" aria-label="資料內容" placeholder="內容" value="${esc(row.value||'')}"><label class="sensitive-check"><input class="detail-sensitive" type="checkbox" ${row.sensitive?'checked':''}> 私密</label><button type="button" class="admin-text-btn danger-text remove-detail">移除</button></div>`;
@@ -482,6 +483,7 @@ function openBookingEditor(id=null){
   $('#editorTitle').textContent=booking?'編輯預訂':'新增預訂';
   $('#eventEditorFields').classList.add('hidden');$('#bookingEditorFields').classList.remove('hidden');
   $('#bookingType').value=booking?.type||'';$('#bookingTitle').value=booking?.title||'';
+  $('#bookingGoogleMaps').value=booking?.googleMaps||'';$('#bookingNaverMaps').value=booking?.naverMaps||'';$('#bookingWebsite').value=booking?.website||'';
   $('#bookingDetails').innerHTML='';(booking?.details||[{}]).forEach((row,index)=>addBookingDetail(row,booking?index:-1));
   showEditorError();$('#itemEditorDialog').showModal();
 }
@@ -491,7 +493,7 @@ async function saveEditor(ev){
   try{
     if(editorContext.kind==='event'){
       const day=state.days.find(d=>d.id===editorContext.dayId);if(!day)throw new Error();
-      const item={...(editorContext.original||{}),time:$('#eventTime').value.trim(),title:$('#eventTitle').value.trim(),note:$('#eventNote').value.trim(),tags:$('#eventTags').value.split(/[、,]/).map(x=>x.trim()).filter(Boolean)};
+      const item={...(editorContext.original||{}),time:$('#eventTime').value.trim(),title:$('#eventTitle').value.trim(),note:$('#eventNote').value.trim(),tags:$('#eventTags').value.split(/[、,]/).map(x=>x.trim()).filter(Boolean),googleMaps:editorUrl('#eventGoogleMaps','Google 地圖連結'),naverMaps:editorUrl('#eventNaverMaps','Naver Map 連結'),website:editorUrl('#eventWebsite','網站／預訂連結')};
       if(!item.title)throw new Error('請輸入行程名稱。');
       const events=[...(day.events||[])];
       if(editorContext.index===null)events.push(item);else events[editorContext.index]=item;
@@ -501,7 +503,7 @@ async function saveEditor(ev){
       const originalDetails=editorContext.original?.details||[];
       const details=[...document.querySelectorAll('.booking-detail-row')].map(row=>{const index=Number(row.dataset.originalDetail);return {...(index>=0?originalDetails[index]:{}),label:row.querySelector('.detail-label').value.trim(),value:row.querySelector('.detail-value').value.trim(),sensitive:row.querySelector('.detail-sensitive').checked}}).filter(r=>r.label||r.value);
       const original={...(editorContext.original||{})};delete original.id;
-      const item={...original,type:$('#bookingType').value.trim(),title:$('#bookingTitle').value.trim(),details};
+      const item={...original,type:$('#bookingType').value.trim(),title:$('#bookingTitle').value.trim(),details,googleMaps:editorUrl('#bookingGoogleMaps','Google 地圖連結'),naverMaps:editorUrl('#bookingNaverMaps','Naver Map 連結'),website:editorUrl('#bookingWebsite','網站／預訂連結')};
       if(!item.title)throw new Error('請輸入預訂名稱。');
       const id=editorContext.id||`booking-${crypto.randomUUID()}`;
       if(!editorContext.id)item.order=Math.max(-1,...state.bookings.map(booking=>Number.isFinite(booking.order)?booking.order:-1))+1;
