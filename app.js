@@ -312,7 +312,7 @@ async function loadTrip(){
       getDocs(collection(db,'trips',TRIP_ID,'bookings'))
     ]);
     state.days=daySnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.date.localeCompare(b.date));
-    state.bookings=bookSnap.docs.map(d=>({id:d.id,...d.data()}));
+    state.bookings=bookSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(Number.isFinite(a.order)?a.order:Number.MAX_SAFE_INTEGER)-(Number.isFinite(b.order)?b.order:Number.MAX_SAFE_INTEGER)||a.id.localeCompare(b.id));
   }catch(e){
     console.warn('無法載入行程資料。'); state.trip=null; state.days=[]; state.bookings=[];
   }
@@ -355,7 +355,8 @@ function eventHtml(e,dayId,index){
   if(e.googleMaps) maps.push(`<a class="link-btn" target="_blank" rel="noopener" href="${esc(e.googleMaps)}">Google 地圖</a>`);
   if(e.naverMaps) maps.push(`<a class="link-btn" target="_blank" rel="noopener" href="${esc(e.naverMaps)}">Naver Map</a>`);
   const day=state.days.find(x=>x.id===dayId);
-  const adminActions=state.isAdmin?`<div class="admin-item-actions"><button class="admin-text-btn" data-edit-event="${esc(dayId)}" data-event-index="${index}">編輯</button><button class="admin-text-btn danger-text" data-delete-event="${esc(dayId)}" data-event-index="${index}">刪除</button></div>`:'';
+  const eventCount=day?.events?.length||0;
+  const adminActions=state.isAdmin?`<div class="admin-item-actions"><div class="admin-order-actions" aria-label="調整行程次序"><button class="admin-text-btn order-btn" data-move-event="${esc(dayId)}" data-event-index="${index}" data-direction="-1" ${index===0?'disabled':''}>↑ 上移</button><button class="admin-text-btn order-btn" data-move-event="${esc(dayId)}" data-event-index="${index}" data-direction="1" ${index===eventCount-1?'disabled':''}>↓ 下移</button></div><div class="admin-edit-actions"><button class="admin-text-btn" data-edit-event="${esc(dayId)}" data-event-index="${index}">編輯</button><button class="admin-text-btn danger-text" data-delete-event="${esc(dayId)}" data-event-index="${index}">刪除</button></div></div>`:'';
   return `<div class="event"><div class="time">${esc(e.time||'')}</div><div><button class="event-title item-link" data-event-day="${esc(dayId)}" data-event-index="${index}">${esc(localized(e,'title')||'')}</button>${e.note?`<div class="event-note">${eventNoteHtml(e,day)}</div>`:''}${badges}${maps.join('')}${adminActions}</div></div>`;
 }
 
@@ -363,6 +364,10 @@ function bindDetailLinks(){
   if(content.dataset.detailLinksBound)return;
   content.dataset.detailLinksBound='true';
   content.addEventListener('click',ev=>{
+    const moveEvent=ev.target.closest('[data-move-event]');
+    if(moveEvent){moveEventItem(moveEvent.dataset.moveEvent,Number(moveEvent.dataset.eventIndex),Number(moveEvent.dataset.direction),moveEvent);return}
+    const moveBooking=ev.target.closest('[data-move-booking]');
+    if(moveBooking){moveBookingItem(moveBooking.dataset.moveBooking,Number(moveBooking.dataset.direction),moveBooking);return}
     const editEvent=ev.target.closest('[data-edit-event]');
     if(editEvent){openEventEditor(editEvent.dataset.editEvent,Number(editEvent.dataset.eventIndex));return}
     const deleteEvent=ev.target.closest('[data-delete-event]');
@@ -442,9 +447,10 @@ function renderDayDetail(id){
 }
 
 function revealBlock(value){return `<span class="sensitive">${esc(value||'—')}</span>`}
-function bookingCard(b){
+function bookingCard(b,index){
   const rows=(b.details||[]).map(r=>`<div>${esc(r.label)}</div><div class="${r.sensitive?'sensitive':''}">${bookingValueHtml(r)}</div>`).join('');
-  return `<article class="booking-card"><div class="booking-label">${esc(b.type||t('預訂','예약'))}</div><button class="booking-value item-link" data-booking="${esc(b.id)}">${esc(localized(b,'title')||'')}</button><div class="kv">${rows}</div>${(b.details||[]).some(r=>r.sensitive)?`<button class="secondary-btn card-action-btn reveal-btn">${t('顯示／隱藏敏感資料','민감한 정보 표시/숨기기')}</button>`:''}${state.isAdmin?`<div class="admin-item-actions"><button class="admin-text-btn" data-edit-booking="${esc(b.id)}">編輯</button><button class="admin-text-btn danger-text" data-delete-booking="${esc(b.id)}">刪除</button></div>`:''}</article>`;
+  const adminActions=state.isAdmin?`<div class="admin-item-actions"><div class="admin-order-actions" aria-label="調整預訂次序"><button class="admin-text-btn order-btn" data-move-booking="${esc(b.id)}" data-direction="-1" ${index===0?'disabled':''}>↑ 上移</button><button class="admin-text-btn order-btn" data-move-booking="${esc(b.id)}" data-direction="1" ${index===state.bookings.length-1?'disabled':''}>↓ 下移</button></div><div class="admin-edit-actions"><button class="admin-text-btn" data-edit-booking="${esc(b.id)}">編輯</button><button class="admin-text-btn danger-text" data-delete-booking="${esc(b.id)}">刪除</button></div></div>`:'';
+  return `<article class="booking-card"><div class="booking-label">${esc(b.type||t('預訂','예약'))}</div><button class="booking-value item-link" data-booking="${esc(b.id)}">${esc(localized(b,'title')||'')}</button><div class="kv">${rows}</div>${(b.details||[]).some(r=>r.sensitive)?`<button class="secondary-btn card-action-btn reveal-btn">${t('顯示／隱藏敏感資料','민감한 정보 표시/숨기기')}</button>`:''}${adminActions}</article>`;
 }
 function renderBookings(){
   content.innerHTML=`<div class="notice danger">此頁包含私人預訂資料。請勿在公共裝置上長時間顯示。</div><div class="section-title section-title-row"><span>旅程預訂</span>${state.isAdmin?'<button class="secondary-btn admin-add-btn" id="addBooking">＋ 新增預訂</button>':''}</div><div class="booking-grid">${state.bookings.map(bookingCard).join('')||'<div class="card muted small">尚未加入預訂。</div>'}</div>`;
@@ -498,6 +504,7 @@ async function saveEditor(ev){
       const item={...original,type:$('#bookingType').value.trim(),title:$('#bookingTitle').value.trim(),details};
       if(!item.title)throw new Error('請輸入預訂名稱。');
       const id=editorContext.id||`booking-${crypto.randomUUID()}`;
+      if(!editorContext.id)item.order=Math.max(-1,...state.bookings.map(booking=>Number.isFinite(booking.order)?booking.order:-1))+1;
       await setDoc(doc(db,'trips',TRIP_ID,'bookings',id),{...item,updatedAt:serverTimestamp(),updatedBy:state.user.uid},{merge:true});
       const local={id,...item};const at=state.bookings.findIndex(b=>b.id===id);if(at>=0)state.bookings[at]=local;else state.bookings.push(local);
     }
@@ -510,6 +517,29 @@ async function removeEvent(dayId,index){
   if(!state.isAdmin||!confirm('確定刪除這個行程項目？'))return;
   const day=state.days.find(d=>d.id===dayId);if(!day)return;
   try{const events=(day.events||[]).filter((_,i)=>i!==index);await setDoc(doc(db,'trips',TRIP_ID,'days',day.id),{events,updatedAt:serverTimestamp(),updatedBy:state.user.uid},{merge:true});day.events=events;state.page==='today'?render():renderDayDetail(day.id)}catch(e){alert('刪除失敗，請稍後再試。')}
+}
+async function moveEventItem(dayId,index,direction,button){
+  if(!state.isAdmin||!state.user)return;
+  const day=state.days.find(d=>d.id===dayId),target=index+direction;
+  if(!day||target<0||target>=(day.events||[]).length)return;
+  button.disabled=true;
+  try{
+    const events=[...(day.events||[])];[events[index],events[target]]=[events[target],events[index]];
+    await setDoc(doc(db,'trips',TRIP_ID,'days',day.id),{events,updatedAt:serverTimestamp(),updatedBy:state.user.uid},{merge:true});
+    day.events=events;state.page==='today'?render():renderDayDetail(day.id);
+  }catch(e){button.disabled=false;alert('調整次序失敗，請稍後再試。')}
+}
+async function moveBookingItem(id,direction,button){
+  if(!state.isAdmin||!state.user)return;
+  const index=state.bookings.findIndex(b=>b.id===id),target=index+direction;
+  if(index<0||target<0||target>=state.bookings.length)return;
+  button.disabled=true;
+  try{
+    const bookings=[...state.bookings];[bookings[index],bookings[target]]=[bookings[target],bookings[index]];
+    const batch=writeBatch(db);
+    bookings.forEach((booking,order)=>batch.set(doc(db,'trips',TRIP_ID,'bookings',booking.id),{order,updatedAt:serverTimestamp(),updatedBy:state.user.uid},{merge:true}));
+    await batch.commit();state.bookings=bookings.map((booking,order)=>({...booking,order}));renderBookings();
+  }catch(e){button.disabled=false;alert('調整次序失敗，請稍後再試。')}
 }
 async function removeBooking(id){
   if(!state.isAdmin||!confirm('確定刪除這個預訂？此操作不能復原。'))return;
