@@ -4,7 +4,8 @@ import {
   onAuthStateChanged, signOut, setPersistence, browserLocalPersistence, getIdToken
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
 import {
-  getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, writeBatch,
+  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  doc, getDoc, setDoc, deleteDoc, collection, writeBatch,
   getDocFromCache, getDocsFromCache, serverTimestamp, onSnapshot
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 
@@ -20,7 +21,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+const db = initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});
 const provider = new GoogleAuthProvider();
 console.info('[AppInit] start');
 console.info('[access] Firebase Auth initialization started');
@@ -89,23 +90,18 @@ const COUNTDOWN_MESSAGES=[
 ];
 let seoulFactIndex=Math.floor(Math.random()*SEOUL_FACTS.length);
 const countdownMessage=COUNTDOWN_MESSAGES[Math.floor(Math.random()*COUNTDOWN_MESSAGES.length)];
-let state = { user:null, trip:null, days:[], bookings:[], page:'today', isAdmin:false, language:localStorage.getItem('displayLanguage')==='ko'?'ko':'zh' };
+let state = { user:null, trip:null, days:[], bookings:[], page:'today', dayDetailId:null, isAdmin:false, language:localStorage.getItem('displayLanguage')==='ko'?'ko':'zh', syncStatus:'syncing' };
 let weatherCache=null;
 let stopAccessListener=null;
 let stopApprovalListener=null;
+let stopTripListeners=[];
+let tripSyncTimer=null;
 let installPrompt=null;
 let editorContext=null;
 let accessInitialization=null;
 let accessRunId=0;
 const ACCESS_RETRY_DELAYS=[800,1500,3000];
-let tripLoadPromise=null;
-let tripLoadRunId=0;
-let tripLoading=false;
-let tripLoadStartedAt=0;
-let appHiddenAt=0;
-let lastResumeRestartAt=0;
 const TRIP_LOAD_TIMEOUT=8000;
-const TRIP_RETRY_DELAYS=[800,1500,3000];
 
 const $ = s => document.querySelector(s);
 const content = $('#content');
@@ -303,16 +299,26 @@ onAuthStateChanged(auth,user=>{
 
 function clearPrivateState(){
   stopApprovalListener?.(); stopApprovalListener=null;
-  tripLoadRunId++;tripLoadPromise=null;tripLoading=false;tripLoadStartedAt=0;
+  stopTripSync();
   state.trip=null;
   state.days=[];
   state.bookings=[];
   state.isAdmin=false;
   state.page='today';
+  state.dayDetailId=null;
   content.replaceChildren();
   $('#detailMap').removeAttribute('src'); $('#detailIntro').replaceChildren();
   closeDetail();
 }
+
+function setSyncStatus(status){
+  state.syncStatus=status;
+  const el=$('#syncStatus');if(!el)return;
+  const labels={synced:['已同步','동기화됨'],syncing:['正在同步…','동기화 중…'],offline:['離線模式','오프라인 모드'],failed:['同步失敗，顯示已儲存資料','동기화 실패, 저장된 데이터 표시 중']};
+  el.textContent=t(...(labels[status]||labels.syncing));el.className=`sync-status ${status}`;
+}
+function stopTripSync(){stopTripListeners.forEach(stop=>stop?.());stopTripListeners=[];clearTimeout(tripSyncTimer);tripSyncTimer=null}
+function sameData(a,b){return JSON.stringify(a)===JSON.stringify(b)}
 
 function showAccessState(status){
   const states={
@@ -390,10 +396,20 @@ async function initializeAccess({source='manual',forceToken=false,restart=false}
   return accessInitialization;
 }
 
+async function cachedAccessFor(user){
+  try{const admin=await getDocFromCache(doc(db,'admins',user.uid));if(admin.exists())return {approved:true,isAdmin:true}}catch(error){}
+  try{const request=await getDocFromCache(doc(db,'accessRequests',user.uid));return {approved:request.data()?.status==='approved',isAdmin:false,status:request.data()?.status}}catch(error){return null}
+}
+
 async function resolveAccess(user=state.user,runId=accessRunId){
   if(!user||runId!==accessRunId)return;
   stopAccessListener?.(); stopAccessListener=null;
-  showAccessState('checking');
+  const cachedAccess=await cachedAccessFor(user);let cachedApproved=!!cachedAccess?.approved;
+  if(cachedApproved){
+    state.isAdmin=cachedAccess.isAdmin;
+    $('#accessView').classList.add('hidden');$('#mainView').classList.remove('hidden');
+    await loadTrip({source:'access-cache'});
+  }else showAccessState('checking');
   console.info('[access] permission check started',{uid:user.uid});
   try{const outcome=await withFirebaseRetry(async attempt=>{
     console.info('[access] admin document read started',{uid:user.uid});
@@ -414,6 +430,7 @@ async function resolveAccess(user=state.user,runId=accessRunId){
       const status=requestSnap.data()?.status;
       console.info('[access] membership result',{status:status||'missing'});
       if(status!=='approved'){
+        if(cachedApproved)clearPrivateState();
         showAccessState(status==='rejected'?'rejected':'pending');
         stopAccessListener=onSnapshot(requestRef,snap=>{
           const nextStatus=snap.data()?.status;
@@ -429,8 +446,13 @@ async function resolveAccess(user=state.user,runId=accessRunId){
     if(outcome!=='approved'||runId!==accessRunId)return;
     console.info('[Permission] completed',{uid:user.uid,isAdmin:state.isAdmin});
     $('#accessView').classList.add('hidden'); $('#mainView').classList.remove('hidden');
-    renderLoading();const loaded=await loadTrip({source:'startup'});if(loaded&&runId===accessRunId)render();
-  }catch(error){if(runId===accessRunId)showAccessFailure(error)}
+    if(cachedApproved){setSyncStatus(navigator.onLine?'syncing':'offline');render()}else await loadTrip({source:'startup'});
+  }catch(error){
+    if(runId!==accessRunId)return;
+    const code=firebaseErrorCode(error);
+    if(cachedApproved&&code!=='permission-denied'&&code!=='unauthenticated')setSyncStatus(navigator.onLine?'failed':'offline');
+    else{if(cachedApproved)clearPrivateState();showAccessFailure(error)}
+  }
 }
 
 function renderLoading(){
@@ -438,32 +460,13 @@ function renderLoading(){
   content.innerHTML='<div class="card loading-state" role="status"><span class="spinner" aria-hidden="true"></span><div><strong>正在載入行程</strong><div class="muted small">請稍候…</div></div></div>';
 }
 
-function tripTimeout(promise,label){
-  return promiseWithTimeout(promise,TRIP_LOAD_TIMEOUT,'trip-timeout',label);
-}
 function tripErrorCode(error){return firebaseErrorCode(error)||String(error?.code||'')}
-function isRetryableTripError(error){return tripErrorCode(error)==='trip-timeout'||isTransientFirebaseError(error)}
 function dayRows(snapshot){return snapshot.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.date.localeCompare(b.date))}
 function bookingRows(snapshot){return snapshot.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(Number.isFinite(a.order)?a.order:Number.MAX_SAFE_INTEGER)-(Number.isFinite(b.order)?b.order:Number.MAX_SAFE_INTEGER)||a.id.localeCompare(b.id))}
-async function readCriticalTrip(useCache=false){
-  console.info('[TripLoad] Firestore request start',{source:useCache?'cache':'default'});
+async function readCachedTrip(){
   const tripRef=doc(db,'trips',TRIP_ID),daysRef=collection(db,'trips',TRIP_ID,'days');
-  const reads=useCache?Promise.all([getDocFromCache(tripRef),getDocsFromCache(daysRef)]):Promise.all([getDoc(tripRef),getDocs(daysRef)]);
-  const [tripSnap,daySnap]=await tripTimeout(reads,useCache?'cached itinerary':'itinerary');
+  const [tripSnap,daySnap]=await Promise.all([getDocFromCache(tripRef),getDocsFromCache(daysRef)]);
   return {trip:tripSnap.exists()?tripSnap.data():null,days:dayRows(daySnap)};
-}
-async function loadBookingsOptional(requestId){
-  const started=Date.now();
-  try{
-    const snapshot=await tripTimeout(getDocs(collection(db,'trips',TRIP_ID,'bookings')),'bookings');
-    if(requestId!==tripLoadRunId)return;
-    state.bookings=bookingRows(snapshot);console.info('[TripLoad] optional bookings success',{requestId,elapsedMs:Date.now()-started});
-    if(state.page==='bookings')renderBookings();
-  }catch(error){
-    if(requestId!==tripLoadRunId)return;
-    try{const cached=await getDocsFromCache(collection(db,'trips',TRIP_ID,'bookings'));if(requestId===tripLoadRunId)state.bookings=bookingRows(cached)}catch(cacheError){}
-    console.warn('[TripLoad] optional bookings unavailable; itinerary remains usable',{requestId,code:tripErrorCode(error),elapsedMs:Date.now()-started});
-  }
 }
 function renderTripLoadError(error){
   $('#pageTitle').textContent='載入行程';
@@ -471,49 +474,48 @@ function renderTripLoadError(error){
   $('#retryTripLoad').onclick=()=>restartTripLoad('retry-button');
   $('#returnToday').onclick=()=>{state.page='today';render()};
 }
-async function loadTrip({force=false,source='manual'}={}){
-  if(tripLoadPromise&&!force){console.info('[TripLoad] reusing active request',{source,requestId:tripLoadRunId});return tripLoadPromise}
-  const requestId=++tripLoadRunId;const started=Date.now();tripLoading=true;tripLoadStartedAt=started;
-  console.info('[TripLoad] start',{source,requestId});
-  const task=(async()=>{
-    let finalError;
-    try{
-      for(let attempt=0;attempt<=TRIP_RETRY_DELAYS.length;attempt++){
-        try{
-          const result=await readCriticalTrip(false);
-          if(requestId!==tripLoadRunId){console.info('[TripLoad] stale response ignored',{requestId});return false}
-          state.trip=result.trip;state.days=result.days;
-          console.info('[TripLoad] Firestore request success',{requestId,attempt:attempt+1,elapsedMs:Date.now()-started});
-          loadBookingsOptional(requestId);return true;
-        }catch(error){
-          finalError=error;console.warn(tripErrorCode(error)==='trip-timeout'?'[TripLoad] timeout':'[TripLoad] request failed',{requestId,attempt:attempt+1,code:tripErrorCode(error),elapsedMs:Date.now()-started});
-          if(requestId!==tripLoadRunId)return false;
-          if(!isRetryableTripError(error)||attempt>=TRIP_RETRY_DELAYS.length)break;
-          console.info(`[TripLoad] retry ${attempt+1}`,{requestId,delay:TRIP_RETRY_DELAYS[attempt]});await wait(TRIP_RETRY_DELAYS[attempt]);
-        }
-      }
-      if(finalError&&!isRetryableTripError(finalError)){
-        if(requestId===tripLoadRunId){console.error('[TripLoad] failure',{requestId,code:tripErrorCode(finalError),elapsedMs:Date.now()-started});renderTripLoadError(finalError)}
-        return false;
-      }
-      try{
-        const cached=await readCriticalTrip(true);
-        if(requestId!==tripLoadRunId)return false;
-        state.trip=cached.trip;state.days=cached.days;console.info('[TripLoad] cached itinerary used',{requestId,elapsedMs:Date.now()-started});loadBookingsOptional(requestId);return true;
-      }catch(cacheError){console.warn('[TripLoad] cache fallback unavailable',{requestId,code:tripErrorCode(cacheError)})}
-      if(requestId===tripLoadRunId){console.error('[TripLoad] failure',{requestId,code:tripErrorCode(finalError),elapsedMs:Date.now()-started});renderTripLoadError(finalError)}
-      return false;
-    }finally{
-      if(requestId===tripLoadRunId){tripLoading=false;tripLoadStartedAt=0;tripLoadPromise=null}
-      console.info('[TripLoad] finished',{requestId,elapsedMs:Date.now()-started});
-    }
-  })();
-  tripLoadPromise=task;return task;
+function tripSyncError(error){
+  const code=tripErrorCode(error);console.warn('[TripSync] listener error',{code,message:error?.message||''});
+  if(code==='permission-denied'||code==='unauthenticated'){
+    clearPrivateState();showAccessState(code==='permission-denied'?'permission':'authError');return;
+  }
+  setSyncStatus(navigator.onLine?'failed':'offline');
+  if(!state.trip)renderTripLoadError(error);
 }
-async function restartTripLoad(source='manual'){
-  if(!state.user)return initializeAccess({source:`trip-${source}`,restart:true});
-  renderLoading();const loaded=await loadTrip({force:true,source});if(loaded)render();
+function updateSyncStatus(sources){
+  if(!navigator.onLine)return setSyncStatus('offline');
+  setSyncStatus(Object.values(sources).some(fromCache=>fromCache)?'syncing':'synced');
 }
+function startTripSync(){
+  stopTripSync();
+  const sources={trip:true,days:true,bookings:true},ready={trip:false,days:false};
+  let initialRendered=!!state.trip;
+  tripSyncTimer=setTimeout(()=>{if(!state.trip){setSyncStatus(navigator.onLine?'failed':'offline');renderTripLoadError({code:navigator.onLine?'trip-timeout':'unavailable'})}},TRIP_LOAD_TIMEOUT);
+  const refresh=changed=>{if(ready.trip&&ready.days){clearTimeout(tripSyncTimer);tripSyncTimer=null;if((changed||!initialRendered)&&!$('#mainView').classList.contains('hidden')){initialRendered=true;render()}}};
+  const listen=(key,reference,convert,getCurrent,setCurrent)=>onSnapshot(reference,{includeMetadataChanges:true},snapshot=>{
+    sources[key]=snapshot.metadata.fromCache;updateSyncStatus(sources);
+    const next=convert(snapshot),changed=!sameData(getCurrent(),next);if(changed)setCurrent(next);
+    ready[key]=true;refresh(changed);
+  },tripSyncError);
+  stopTripListeners=[
+    listen('trip',doc(db,'trips',TRIP_ID),snap=>snap.exists()?snap.data():null,()=>state.trip,next=>{state.trip=next}),
+    listen('days',collection(db,'trips',TRIP_ID,'days'),dayRows,()=>state.days,next=>{state.days=next}),
+    onSnapshot(collection(db,'trips',TRIP_ID,'bookings'),{includeMetadataChanges:true},snapshot=>{
+      sources.bookings=snapshot.metadata.fromCache;updateSyncStatus(sources);
+      const next=bookingRows(snapshot);if(!sameData(state.bookings,next)){state.bookings=next;if(state.page==='bookings')renderBookings()}
+    },tripSyncError)
+  ];
+}
+async function loadTrip({source='manual'}={}){
+  console.info('[TripLoad] cache-first start',{source});setSyncStatus(navigator.onLine?'syncing':'offline');
+  let cached=false;
+  try{
+    const [result,bookings]=await Promise.all([readCachedTrip(),getDocsFromCache(collection(db,'trips',TRIP_ID,'bookings')).catch(()=>null)]);
+    if(result.trip){state.trip=result.trip;state.days=result.days;if(bookings)state.bookings=bookingRows(bookings);cached=true;render();console.info('[TripLoad] persistent cache rendered')}
+  }catch(error){console.info('[TripLoad] no persistent itinerary cache available',{code:tripErrorCode(error)})}
+  if(!cached)renderLoading();startTripSync();return cached;
+}
+async function restartTripLoad(source='manual'){if(!state.user)return initializeAccess({source:`trip-${source}`,restart:true});await loadTrip({source})}
 
 function render(){
   if(state.page!=='more'){stopApprovalListener?.();stopApprovalListener=null}
@@ -522,7 +524,9 @@ function render(){
   const nav=state.language==='ko'?['오늘','일정','예약','환율','더보기']:['今日','行程','預訂','匯率','更多'];
   document.querySelectorAll('.nav-item small').forEach((el,i)=>el.textContent=nav[i]);
   $('#languageBtn').textContent=state.language==='ko'?'中文':'한국어';
+  setSyncStatus(state.syncStatus);
   if(!state.trip && state.page!=='more') return renderEmpty();
+  if(state.page==='days'&&state.dayDetailId)return renderDayDetail(state.dayDetailId);
   ({today:renderToday,days:renderDays,bookings:renderBookings,money:renderMoney,more:renderMore}[state.page])();
 }
 
@@ -642,9 +646,10 @@ function renderDays(){
 }
 function renderDayDetail(id){
   const d=state.days.find(x=>x.id===id); if(!d)return;
+  state.dayDetailId=id;
   $('#pageTitle').textContent=d.dateLabel||d.date;
   content.innerHTML=`<button class="secondary-btn" id="backDays">← ${t('返回全部行程','전체 일정으로')}</button><section class="hero" style="margin-top:12px"><div class="sub">${esc(d.dateLabel||'')}</div><div class="big">${esc(localized(d,'area')||'')}</div><div class="meta">${esc(localized(d,'summary')||'')}</div></section>${state.isAdmin?`<div class="admin-toolbar"><button class="primary-btn" data-add-event="${esc(d.id)}">＋ 新增行程</button></div>`:''}<div class="card timeline">${(d.events||[]).map((e,i)=>eventHtml(e,d.id,i)).join('')||'<div class="muted small">尚未加入行程。</div>'}</div>`;
-  $('#backDays').onclick=()=>{state.page='days';render()};
+  $('#backDays').onclick=()=>{state.dayDetailId=null;state.page='days';render()};
   bindDetailLinks();
 }
 
@@ -865,7 +870,7 @@ async function importPrivateData(ev){
   }catch(e){status.textContent='❌ 匯入失敗：'+e.message}
 }
 
-document.querySelectorAll('.nav-item').forEach(btn=>{btn.onclick=()=>{state.page=btn.dataset.page;render()};btn.ondblclick=event=>event.preventDefault()});
+document.querySelectorAll('.nav-item').forEach(btn=>{btn.onclick=()=>{state.dayDetailId=null;state.page=btn.dataset.page;render()};btn.ondblclick=event=>event.preventDefault()});
 $('#profileBtn').onclick=()=>$('#profileDialog').showModal(); $('#closeProfile').onclick=()=>$('#profileDialog').close();
 $('#logoutBtn').onclick=()=>signOut(auth).then(()=>$('#profileDialog').close());
 $('#accessLogoutBtn').onclick=()=>signOut(auth);
@@ -899,19 +904,8 @@ $('#bookingSubItems').onclick=event=>{
   updateBookingSubItemButtons();
 };
 
-function resumeAppIfNeeded(source){
-  const now=Date.now(),inactiveMs=appHiddenAt?now-appHiddenAt:0,staleLoad=tripLoading&&(now-tripLoadStartedAt>=TRIP_LOAD_TIMEOUT||appHiddenAt>0);
-  console.info('[Visibility] app resumed',{source,inactiveMs,tripLoading,staleLoad});
-  appHiddenAt=0;
-  if((inactiveMs>=60000||staleLoad)&&now-lastResumeRestartAt>1500){
-    lastResumeRestartAt=now;console.info('[Visibility] restarting stale load',{source,inactiveMs});initializeAccess({source:`${source}-resume`,restart:true});
-  }
-}
-document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='hidden'){appHiddenAt=Date.now();console.info('[Visibility] app background')}
-  else resumeAppIfNeeded('visibility');
-});
-window.addEventListener('pageshow',event=>{if(event.persisted||tripLoading)resumeAppIfNeeded('pageshow')});
+window.addEventListener('offline',()=>setSyncStatus('offline'));
+window.addEventListener('online',()=>{if(state.user&&state.trip)setSyncStatus('syncing')});
 
 window.addEventListener('beforeinstallprompt',e=>{
   e.preventDefault(); installPrompt=e;
