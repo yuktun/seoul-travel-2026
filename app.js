@@ -495,16 +495,21 @@ function tripSyncError(error){
 }
 function updateSyncStatus(sources){
   if(!navigator.onLine)return setSyncStatus('offline');
-  setSyncStatus(Object.values(sources).some(fromCache=>fromCache)?'syncing':'synced');
+  const snapshots=Object.values(sources);
+  const allReady=snapshots.every(source=>source.seen);
+  const hasPendingWrites=snapshots.some(source=>source.hasPendingWrites);
+  const serverConfirmed=snapshots.some(source=>source.fromCache===false);
+  setSyncStatus(allReady&&!hasPendingWrites&&serverConfirmed?'synced':'syncing');
 }
 function startTripSync(){
   stopTripSync();
-  const sources={trip:true,days:true,bookings:true},ready={trip:false,days:false};
+  const newSource=()=>({seen:false,fromCache:null,hasPendingWrites:false});
+  const sources={trip:newSource(),days:newSource(),bookings:newSource()},ready={trip:false,days:false};
   let initialRendered=!!state.trip;
   tripSyncTimer=setTimeout(()=>{if(!state.trip){setSyncStatus(navigator.onLine?'failed':'offline');renderTripLoadError({code:navigator.onLine?'trip-timeout':'unavailable'})}},TRIP_LOAD_TIMEOUT);
   const refresh=changed=>{if(ready.trip&&ready.days){clearTimeout(tripSyncTimer);tripSyncTimer=null;if((changed||!initialRendered)&&!$('#mainView').classList.contains('hidden')){initialRendered=true;render()}}};
   const listen=(key,reference,convert,getCurrent,setCurrent)=>onSnapshot(reference,{includeMetadataChanges:true},snapshot=>{
-    sources[key]=snapshot.metadata.fromCache;updateSyncStatus(sources);
+    sources[key]={seen:true,fromCache:snapshot.metadata.fromCache,hasPendingWrites:snapshot.metadata.hasPendingWrites};updateSyncStatus(sources);
     const next=convert(snapshot),changed=!sameData(getCurrent(),next);if(changed)setCurrent(next);
     ready[key]=true;refresh(changed);
   },tripSyncError);
@@ -512,7 +517,7 @@ function startTripSync(){
     listen('trip',doc(db,'trips',TRIP_ID),snap=>snap.exists()?snap.data():null,()=>state.trip,next=>{state.trip=next}),
     listen('days',collection(db,'trips',TRIP_ID,'days'),dayRows,()=>state.days,next=>{state.days=next}),
     onSnapshot(collection(db,'trips',TRIP_ID,'bookings'),{includeMetadataChanges:true},snapshot=>{
-      sources.bookings=snapshot.metadata.fromCache;updateSyncStatus(sources);
+      sources.bookings={seen:true,fromCache:snapshot.metadata.fromCache,hasPendingWrites:snapshot.metadata.hasPendingWrites};updateSyncStatus(sources);
       const next=bookingRows(snapshot);if(!sameData(state.bookings,next)){state.bookings=next;if(state.page==='bookings')renderBookings()}
     },tripSyncError)
   ];
