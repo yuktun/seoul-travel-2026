@@ -1,7 +1,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
 import {
   getAuth, GoogleAuthProvider, signInWithPopup,
-  onAuthStateChanged, signOut, setPersistence, browserLocalPersistence
+  onAuthStateChanged, signOut, setPersistence, browserLocalPersistence, getIdToken
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
 import {
   getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, writeBatch,
@@ -22,7 +22,9 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
-await setPersistence(auth, browserLocalPersistence);
+console.info('[access] Firebase Auth initialization started');
+try{await setPersistence(auth,browserLocalPersistence);console.info('[access] local authentication persistence ready')}
+catch(error){console.warn('[access] local authentication persistence unavailable; continuing with Firebase default persistence',{code:error?.code||'',message:error?.message||''})}
 
 const TRIP_ID = 'seoul-2026';
 const SEOUL_FACTS=[
@@ -92,6 +94,9 @@ let stopAccessListener=null;
 let stopApprovalListener=null;
 let installPrompt=null;
 let editorContext=null;
+let accessInitialization=null;
+let accessRunId=0;
+const ACCESS_RETRY_DELAYS=[800,1500,3000];
 
 const $ = s => document.querySelector(s);
 const content = $('#content');
@@ -234,21 +239,12 @@ async function login(){
 }
 $('#loginBtn').addEventListener('click',login);
 
-onAuthStateChanged(auth, async user=>{
-  stopAccessListener?.(); stopAccessListener=null;
-  clearPrivateState();
-  state.user=user;
-  $('#loginView').classList.toggle('hidden',!!user);
-  $('#accessView').classList.add('hidden');
-  $('#mainView').classList.add('hidden');
-  if(!user){
-    $('#profileInfo').textContent='';
-    if($('#profileDialog').open) $('#profileDialog').close();
-    return;
-  }
-  $('#profileInfo').innerHTML=`<p><strong>${esc(user.displayName||'')}</strong><br><span class="muted">${esc(user.email||'')}</span></p>`;
-  showAccessState('checking');
-  await resolveAccess();
+onAuthStateChanged(auth,user=>{
+  console.info('[access] Firebase Auth initialization completed',user?{uid:user.uid,email:user.email||''}:{user:null});
+  initializeAccess({source:'auth-state',restart:true});
+},error=>{
+  console.error('[access] Firebase Auth initialization failed',{code:error?.code||'',message:error?.message||''});
+  showAccessFailure(error,'auth');
 });
 
 function clearPrivateState(){
@@ -268,42 +264,109 @@ function showAccessState(status){
     checking:['⏳','正在檢查權限','請稍候…',false],
     pending:['🕐','等候管理員批准','你的加入申請已送出。批准後，這個畫面會自動更新。',true],
     rejected:['🔒','申請未獲批准','請聯絡旅程管理員了解詳情。',true],
-    error:['⚠️','未能檢查權限','請確認網絡連線，或請管理員完成 Firebase 權限設定。',true]
+    permission:['🔒','沒有存取權限','Firebase 權限設定拒絕了這次請求，請聯絡管理員。',true],
+    temporary:['⚠️','Firebase 服務暫時無法使用','已自動重試，但服務仍未恢復。請稍後重新檢查。',true],
+    network:['📡','網絡連線中斷','請檢查網絡連線後重新檢查。',true],
+    authError:['⚠️','登入狀態未能恢復','請重新檢查；如問題持續，請登出後再次登入。',true]
   };
-  const [icon,title,message,retry]=states[status]||states.error;
+  const [icon,title,message,retry]=states[status]||states.temporary;
   $('#loginView').classList.add('hidden'); $('#mainView').classList.add('hidden'); $('#accessView').classList.remove('hidden');
   $('#accessIcon').textContent=icon; $('#accessTitle').textContent=title; $('#accessMessage').textContent=message;
   $('#retryAccessBtn').classList.toggle('hidden',!retry);
 }
 
-async function resolveAccess(){
-  if(!state.user)return;
+function firebaseErrorCode(error){return String(error?.code||'').replace(/^firestore\//,'').replace(/^auth\//,'')}
+function isConnectivityError(error){const code=firebaseErrorCode(error);return code==='network-request-failed'||(!navigator.onLine&&['unavailable','deadline-exceeded','unknown'].includes(code))}
+function isTransientFirebaseError(error){return ['unavailable','deadline-exceeded','aborted','internal','resource-exhausted','unknown','unauthenticated','network-request-failed'].includes(firebaseErrorCode(error))}
+function showAccessFailure(error,stage='permission'){
+  const code=firebaseErrorCode(error);
+  console.error('[access] final failure',{stage,code,message:error?.message||''});
+  if(isConnectivityError(error))showAccessState('network');
+  else if(code==='permission-denied')showAccessState('permission');
+  else if(stage==='auth')showAccessState('authError');
+  else showAccessState('temporary');
+}
+function wait(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
+async function withFirebaseRetry(operation,label,user){
+  for(let attempt=0;;attempt++){
+    try{return await operation()}
+    catch(error){
+      const code=firebaseErrorCode(error);
+      console.warn('[access] Firebase request failed',{operation:label,code,message:error?.message||'',attempt:attempt+1});
+      if(!isTransientFirebaseError(error)||attempt>=ACCESS_RETRY_DELAYS.length)throw error;
+      const retryNumber=attempt+1,delay=ACCESS_RETRY_DELAYS[attempt];
+      console.info('[access] retry scheduled',{operation:label,retryAttempt:retryNumber,delay});
+      if(code==='unauthenticated'&&user&&attempt===0){
+        console.info('[access] refreshing Firebase ID token before retry');
+        await getIdToken(user,true);
+      }
+      await wait(delay);
+    }
+  }
+}
+async function initializeAccess({source='manual',forceToken=false,restart=false}={}){
+  if(accessInitialization&&!restart){console.info('[access] initialization already running',{source});return accessInitialization}
+  if(restart&&accessInitialization)console.info('[access] superseding stale initialization',{source});
+  const runId=++accessRunId;
+  accessInitialization=(async()=>{
+    console.info('[access] complete initialization started',{source,runId});
+    showAccessState('checking');
+    await auth.authStateReady();
+    if(runId!==accessRunId)return;
+    const user=auth.currentUser;
+    console.info('[access] authenticated user resolved',user?{uid:user.uid,email:user.email||''}:{user:null});
+    stopAccessListener?.();stopAccessListener=null;
+    clearPrivateState();state.user=user;
+    $('#loginView').classList.toggle('hidden',!!user);$('#accessView').classList.add('hidden');$('#mainView').classList.add('hidden');
+    if(!user){
+      $('#profileInfo').textContent='';if($('#profileDialog').open)$('#profileDialog').close();return;
+    }
+    $('#profileInfo').innerHTML=`<p><strong>${esc(user.displayName||'')}</strong><br><span class="muted">${esc(user.email||'')}</span></p>`;
+    showAccessState('checking');
+    if(forceToken){console.info('[access] refreshing Firebase ID token for manual retry');await getIdToken(user,true)}
+    await resolveAccess(user,runId);
+  })().catch(error=>{if(runId===accessRunId)showAccessFailure(error,'auth')}).finally(()=>{if(runId===accessRunId)accessInitialization=null});
+  return accessInitialization;
+}
+
+async function resolveAccess(user=state.user,runId=accessRunId){
+  if(!user||runId!==accessRunId)return;
   stopAccessListener?.(); stopAccessListener=null;
   showAccessState('checking');
-  try{
-    const adminSnap=await getDoc(doc(db,'admins',state.user.uid));
+  console.info('[access] permission check started',{uid:user.uid});
+  try{await withFirebaseRetry(async()=>{
+    console.info('[access] admin document read started',{uid:user.uid});
+    const adminSnap=await getDoc(doc(db,'admins',user.uid));
+    if(runId!==accessRunId)return;
     state.isAdmin=adminSnap.exists();
+    console.info('[access] admin result',{isAdmin:state.isAdmin});
     if(!state.isAdmin){
-      const requestRef=doc(db,'accessRequests',state.user.uid);
+      const requestRef=doc(db,'accessRequests',user.uid);
+      console.info('[access] membership document read started',{uid:user.uid});
       let requestSnap=await getDoc(requestRef);
+      if(runId!==accessRunId)return;
       if(!requestSnap.exists()){
-        await setDoc(requestRef,{email:state.user.email||'',displayName:state.user.displayName||'',status:'pending',createdAt:serverTimestamp()});
+        await setDoc(requestRef,{email:user.email||'',displayName:user.displayName||'',status:'pending',createdAt:serverTimestamp()});
         requestSnap=await getDoc(requestRef);
+        if(runId!==accessRunId)return;
       }
       const status=requestSnap.data()?.status;
+      console.info('[access] membership result',{status:status||'missing'});
       if(status!=='approved'){
         showAccessState(status==='rejected'?'rejected':'pending');
         stopAccessListener=onSnapshot(requestRef,snap=>{
           const nextStatus=snap.data()?.status;
-          if(nextStatus==='approved') resolveAccess();
+          console.info('[access] membership status changed',{status:nextStatus||'missing'});
+          if(nextStatus==='approved') initializeAccess({source:'membership-approved'});
           else showAccessState(nextStatus==='rejected'?'rejected':'pending');
-        },()=>showAccessState('error'));
+        },error=>{console.warn('[access] membership listener failed',{code:firebaseErrorCode(error),message:error?.message||''});initializeAccess({source:'membership-listener-recovery',forceToken:firebaseErrorCode(error)==='unauthenticated'})});
         return;
       }
     }
+    if(runId!==accessRunId)return;
     $('#accessView').classList.add('hidden'); $('#mainView').classList.remove('hidden');
     renderLoading(); await loadTrip(); render();
-  }catch(e){showAccessState('error')}
+  },'permission-check',user)}catch(error){if(runId===accessRunId)showAccessFailure(error)}
 }
 
 function renderLoading(){
@@ -660,7 +723,7 @@ document.querySelectorAll('.nav-item').forEach(btn=>{btn.onclick=()=>{state.page
 $('#profileBtn').onclick=()=>$('#profileDialog').showModal(); $('#closeProfile').onclick=()=>$('#profileDialog').close();
 $('#logoutBtn').onclick=()=>signOut(auth).then(()=>$('#profileDialog').close());
 $('#accessLogoutBtn').onclick=()=>signOut(auth);
-$('#retryAccessBtn').onclick=resolveAccess;
+$('#retryAccessBtn').onclick=()=>initializeAccess({source:'retry-button',forceToken:true});
 $('#languageBtn').onclick=()=>{state.language=state.language==='ko'?'zh':'ko';localStorage.setItem('displayLanguage',state.language);render();if(state.language==='ko'){const d=targetDay();const e=d?.events?.[0];if(e)openDetail(e)}};
 $('#closeDetail').onclick=closeDetail;
 $('#closeDetailBottom').onclick=closeDetail;

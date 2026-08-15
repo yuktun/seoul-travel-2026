@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="首爾旅遊" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
   <title>首爾旅遊 2026</title>
-  <link rel="manifest" href="manifest.webmanifest?v=1.27" />
+  <link rel="manifest" href="manifest.webmanifest?v=1.29" />
   <script>
     (() => {
       const pref = localStorage.getItem('themePreference') || 'auto';
@@ -19,11 +19,11 @@
       document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=1.27" />
+  <link rel="stylesheet" href="styles.css?v=1.29" />
 </head>
 <body>
   <div id="app">
-    <section id="loginView" class="login-screen">
+    <section id="loginView" class="login-screen hidden">
       <div class="login-card">
         <div class="flag">🇰🇷</div>
         <h1>首爾旅遊 2026</h1>
@@ -33,7 +33,7 @@
       </div>
     </section>
 
-    <section id="accessView" class="login-screen hidden">
+    <section id="accessView" class="login-screen">
       <div class="login-card">
         <div class="flag" id="accessIcon">⏳</div>
         <h1 id="accessTitle">正在檢查權限</h1>
@@ -115,6 +115,6 @@
     </section>
   </div>
 
-  <script type="module" src="app.js?v=1.27"></script>
+  <script type="module" src="app.js?v=1.29"></script>
 </body>
 </html>
