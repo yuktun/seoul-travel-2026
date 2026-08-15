@@ -241,6 +241,24 @@ function eventNoteHtml(event,day){
   const prefix=state.language==='ko'?'추천 장소: ':match[1];
   return `<span>${esc(prefix)}</span>${placeChips(event,day,names)}`;
 }
+function subwayLineBadge(line){
+  const safe=String(line||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+  return `<span class="subway-line subway-line-${safe}" aria-label="${esc(line)}號線">${esc(line)}</span>`;
+}
+function subwayRouteHtml(subway){
+  if(!subway||!Array.isArray(subway.stations)||subway.stations.length<2)return '';
+  const stations=subway.stations.map(station=>{
+    const lines=Array.isArray(station.lines)?station.lines:[station.line].filter(Boolean);
+    const badges=lines.map(subwayLineBadge).join('');
+    const name=state.language==='ko'?(station.nameKo||station.name):station.name;
+    return `<span class="subway-station">${badges}<span>${esc(name||'')}</span></span>`;
+  }).join('<span class="subway-arrow" aria-hidden="true">→</span>');
+  const meta=[];
+  const duration=state.language==='ko'?(subway.durationKo||subway.duration):subway.duration;
+  const exit=state.language==='ko'?(subway.exitKo||subway.exit):subway.exit;
+  if(duration)meta.push(esc(duration));if(exit)meta.push(esc(exit));
+  return `<div class="subway-route"><div class="subway-route-label">🚇 ${t('地鐵路線','지하철 경로')}</div><div class="subway-stations">${stations}</div>${meta.length?`<div class="subway-meta">${meta.join('<span aria-hidden="true">｜</span>')}</div>`:''}</div>`;
+}
 function money(n){return new Intl.NumberFormat('zh-HK',{maximumFractionDigits:2}).format(n||0)}
 function fmtDate(d){return new Intl.DateTimeFormat('zh-HK',{month:'numeric',day:'numeric',weekday:'short'}).format(d)}
 
@@ -517,7 +535,7 @@ function eventHtml(e,dayId,index){
   const day=state.days.find(x=>x.id===dayId);
   const eventCount=day?.events?.length||0;
   const adminActions=state.isAdmin?`<div class="admin-item-actions"><div class="admin-order-actions" aria-label="調整行程次序"><button class="admin-text-btn order-btn" data-move-event="${esc(dayId)}" data-event-index="${index}" data-direction="-1" ${index===0?'disabled':''}>↑ 上移</button><button class="admin-text-btn order-btn" data-move-event="${esc(dayId)}" data-event-index="${index}" data-direction="1" ${index===eventCount-1?'disabled':''}>↓ 下移</button></div><div class="admin-edit-actions"><button class="admin-text-btn" data-edit-event="${esc(dayId)}" data-event-index="${index}">編輯</button><button class="admin-text-btn danger-text" data-delete-event="${esc(dayId)}" data-event-index="${index}">刪除</button></div></div>`:'';
-  return `<div class="event"><div class="time">${esc(e.time||'')}</div><div><button class="event-title item-link" data-event-day="${esc(dayId)}" data-event-index="${index}">${esc(localized(e,'title')||'')}</button>${e.note?`<div class="event-note">${eventNoteHtml(e,day)}</div>`:''}${badges}${externalLinksHtml(e)}${adminActions}</div></div>`;
+  return `<div class="event"><div class="time">${esc(e.time||'')}</div><div><button class="event-title item-link" data-event-day="${esc(dayId)}" data-event-index="${index}">${esc(localized(e,'title')||'')}</button>${e.note?`<div class="event-note">${eventNoteHtml(e,day)}</div>`:''}${subwayRouteHtml(e.subway)}${badges}${externalLinksHtml(e)}${adminActions}</div></div>`;
 }
 
 function bindDetailLinks(){

@@ -1,5 +1,5 @@
-const CACHE='seoul-travel-v1.34';
-const ASSETS=['./','./index.html','./styles.css?v=1.34','./app.js?v=1.34','./manifest.webmanifest?v=1.34','./app-icon-192.png','./app-icon-512.png','./apple-touch-icon.png'];
+const CACHE='seoul-travel-v1.35';
+const ASSETS=['./','./index.html','./styles.css?v=1.35','./app.js?v=1.35','./manifest.webmanifest?v=1.35','./app-icon-192.png','./app-icon-512.png','./apple-touch-icon.png'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',e=>{
