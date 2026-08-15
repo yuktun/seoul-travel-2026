@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="首爾旅遊" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
   <title>首爾旅遊 2026</title>
-  <link rel="manifest" href="manifest.webmanifest?v=1.33" />
+  <link rel="manifest" href="manifest.webmanifest?v=1.34" />
   <script>
     (() => {
       const pref = localStorage.getItem('themePreference') || 'auto';
@@ -19,7 +19,7 @@
       document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=1.33" />
+  <link rel="stylesheet" href="styles.css?v=1.34" />
 </head>
 <body>
   <div id="app">
@@ -98,6 +98,7 @@
           <label>Google 地圖地點或連結<input id="bookingMapTarget" class="form-input" autocapitalize="off" placeholder="例如：明洞某酒店，或貼上 Google 地圖連結"><span class="muted small">留空時會使用預訂名稱搜尋。</span></label>
           <label>網站／預訂連結<input id="bookingWebsite" class="form-input" type="url" inputmode="url" autocapitalize="off" placeholder="https://..."></label>
           <div><div class="editor-field-head"><strong>詳細資料</strong><button id="addBookingDetail" type="button" class="secondary-btn small">＋ 新增一行</button></div><div id="bookingDetails" class="booking-details-editor"></div></div>
+          <div><div class="editor-field-head"><div><strong>預訂小項目</strong><div class="muted small">可加入補充說明、地圖或網站連結。</div></div><button id="addBookingSubItem" type="button" class="secondary-btn small">＋ 新增小項目</button></div><div id="bookingSubItems" class="event-places-editor"></div></div>
         </div>
         <div id="editorStatus" class="editor-status" role="alert"></div>
         <div class="editor-actions"><button id="cancelEditor" type="button" class="secondary-btn">取消</button><button id="saveEditor" type="submit" class="primary-btn">儲存</button></div>
@@ -111,11 +112,11 @@
         <div id="detailIntro" class="detail-intro"></div>
         <div id="detailPreviewNotice" class="preview-notice hidden">部分網站基於安全設定不允許內嵌預覽。如未能顯示，請按下方按鈕開啟。</div>
         <iframe id="detailMap" class="detail-map" title="Google 地圖" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"></iframe>
-        <div class="detail-actions"><a id="openGoogleMaps" class="primary-btn map-open-btn" target="_blank" rel="noopener">在 Google 地圖開啟</a><button id="closeDetailBottom" class="secondary-btn">關閉</button></div>
+        <div class="detail-actions"><a id="openGoogleMaps" class="primary-btn map-open-btn" rel="noopener">在 Google 地圖開啟</a><button id="closeDetailBottom" class="secondary-btn">關閉</button></div>
       </div>
     </section>
   </div>
 
-  <script type="module" src="app.js?v=1.33"></script>
+  <script type="module" src="app.js?v=1.34"></script>
 </body>
 </html>

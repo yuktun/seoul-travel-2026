@@ -174,6 +174,7 @@ function externalLinksHtml(item){const website=externalUrl(item?.website);return
 function mapTargetValue(value,label){value=String(value||'').trim();if(value.includes('://')&&!externalUrl(value))throw new Error(`${label}如使用連結，必須是有效的 http:// 或 https:// 連結。`);return value}
 function editorMapTarget(selector,label){return mapTargetValue($(selector).value,label)}
 function editorMapTargetElement(element,label){return mapTargetValue(element.value,label)}
+function googleMapOpenUrl(value){const url=externalUrl(value);if(!url)return '';try{const parsed=new URL(url);if(parsed.hostname==='maps.app.goo.gl'){parsed.search='';parsed.hash='';return parsed.href}return parsed.href}catch(error){return url}}
 function mapTargetQuery(value,fallback){
   const target=String(value||'').trim();if(!target)return fallback;
   const url=externalUrl(target);if(!url)return target;
@@ -542,6 +543,8 @@ function bindDetailLinks(){
     if(placeLink){openDetail({title:placeLink.dataset.placeLabel,mapQuery:`${placeLink.dataset.placeArea} ${placeLink.dataset.placeName}`,note:t('餐廳／地點資料','식당／장소 정보'),mapTarget:placeLink.dataset.placeTarget,website:placeLink.dataset.placeWebsite,popupMode:placeLink.dataset.placePopup});return}
     const eventLink=ev.target.closest('[data-event-day]');
     if(eventLink){const d=state.days.find(x=>x.id===eventLink.dataset.eventDay);const e=d?.events?.[Number(eventLink.dataset.eventIndex)];if(e)openDetail({...e,mapQuery:`${areaContext(d)} ${e.title||''}`});return}
+    const bookingSubItem=ev.target.closest('[data-booking-sub-item]');
+    if(bookingSubItem){const b=state.bookings.find(x=>x.id===bookingSubItem.dataset.bookingSubItem);const item=b?.items?.[Number(bookingSubItem.dataset.subItemIndex)];if(item)openDetail({title:localized(item,'name')||item.name,note:localized(item,'description')||item.description,mapTarget:item.mapTarget,website:item.website,popupMode:item.popupMode});return}
     const bookingLink=ev.target.closest('[data-booking]');
     if(bookingLink){const b=state.bookings.find(x=>x.id===bookingLink.dataset.booking);if(b)openDetail(b,true)}
   });
@@ -551,7 +554,7 @@ function openDetail(item,isBooking=false){
   const title=localized(item,'title')||t('地點資料','장소 정보');
   const configuredTarget=item.mapTarget||item.googleMaps||'';
   const query=configuredTarget?mapTargetQuery(configuredTarget,item.mapQuery||title):`${item.mapQuery||title} Seoul`;
-  const mapUrl=externalUrl(configuredTarget)||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  const mapUrl=googleMapOpenUrl(configuredTarget)||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
   const previewUrl=item.popupMode==='website'?externalUrl(item.website):'';
   $('#detailTitle').textContent=title;
   if(isBooking){
@@ -562,7 +565,7 @@ function openDetail(item,isBooking=false){
   $('#detailPreviewNotice').textContent=t('部分網站基於安全設定不允許內嵌預覽。如未能顯示，請按下方按鈕開啟。','일부 웹사이트는 보안 설정으로 미리보기를 허용하지 않습니다. 표시되지 않으면 아래 버튼을 눌러 주세요.');
   $('#detailMap').title=previewUrl?t('網站／預訂預覽','웹사이트／예약 미리보기'):t('Google 地圖','Google 지도');
   $('#detailMap').src=previewUrl||`https://www.google.com/maps?q=${encodeURIComponent(query)}&hl=${state.language==='ko'?'ko':'zh-TW'}&output=embed`;
-  $('#openGoogleMaps').href=previewUrl||mapUrl; $('#openGoogleMaps').textContent=previewUrl?t('開啟網站／預訂','웹사이트／예약 열기'):t('在 Google 地圖開啟','Google 지도에서 열기'); $('#closeDetailBottom').textContent=t('關閉','닫기');
+  $('#openGoogleMaps').href=previewUrl||mapUrl;$('#openGoogleMaps').target=previewUrl?'_blank':'_self'; $('#openGoogleMaps').textContent=previewUrl?t('開啟網站／預訂','웹사이트／예약 열기'):t('在 Google 地圖開啟','Google 지도에서 열기'); $('#closeDetailBottom').textContent=t('關閉','닫기');
   $('#koreanHelper').classList.toggle('hidden',state.language!=='ko');
   $('#detailDialog').classList.remove('hidden'); $('#detailDialog').setAttribute('aria-hidden','false');
   document.body.classList.add('modal-open'); $('#closeDetail').focus();
@@ -614,8 +617,9 @@ function renderDayDetail(id){
 function revealBlock(value){return `<span class="sensitive">${esc(value||'—')}</span>`}
 function bookingCard(b,index){
   const rows=(b.details||[]).map(r=>`<div>${esc(r.label)}</div><div class="${r.sensitive?'sensitive':''}">${bookingValueHtml(r)}</div>`).join('');
+  const subItems=(b.items||[]).length?`<div class="booking-sub-items">${b.items.map((item,itemIndex)=>`<button class="mini-place-link" data-booking-sub-item="${esc(b.id)}" data-sub-item-index="${itemIndex}">${esc(localized(item,'name')||item.name||'')}</button>`).join('')}</div>`:'';
   const adminActions=state.isAdmin?`<div class="admin-item-actions"><div class="admin-order-actions" aria-label="調整預訂次序"><button class="admin-text-btn order-btn" data-move-booking="${esc(b.id)}" data-direction="-1" ${index===0?'disabled':''}>↑ 上移</button><button class="admin-text-btn order-btn" data-move-booking="${esc(b.id)}" data-direction="1" ${index===state.bookings.length-1?'disabled':''}>↓ 下移</button></div><div class="admin-edit-actions"><button class="admin-text-btn" data-edit-booking="${esc(b.id)}">編輯</button><button class="admin-text-btn danger-text" data-delete-booking="${esc(b.id)}">刪除</button></div></div>`:'';
-  return `<article class="booking-card"><div class="booking-label">${esc(b.type||t('預訂','예약'))}</div><button class="booking-value item-link" data-booking="${esc(b.id)}">${esc(localized(b,'title')||'')}</button><div class="kv">${rows}</div>${externalLinksHtml(b)}${(b.details||[]).some(r=>r.sensitive)?`<button class="secondary-btn card-action-btn reveal-btn">${t('顯示／隱藏敏感資料','민감한 정보 표시/숨기기')}</button>`:''}${adminActions}</article>`;
+  return `<article class="booking-card"><div class="booking-label">${esc(b.type||t('預訂','예약'))}</div><button class="booking-value item-link" data-booking="${esc(b.id)}">${esc(localized(b,'title')||'')}</button><div class="kv">${rows}</div>${subItems}${(b.details||[]).some(r=>r.sensitive)?`<button class="secondary-btn card-action-btn reveal-btn">${t('顯示／隱藏敏感資料','민감한 정보 표시/숨기기')}</button>`:''}${adminActions}</article>`;
 }
 function renderBookings(){
   content.innerHTML=`<div class="notice danger">此頁包含私人預訂資料。請勿在公共裝置上長時間顯示。</div><div class="section-title section-title-row"><span>旅程預訂</span>${state.isAdmin?'<button class="secondary-btn admin-add-btn" id="addBooking">＋ 新增預訂</button>':''}</div><div class="booking-grid">${state.bookings.map(bookingCard).join('')||'<div class="card muted small">尚未加入預訂。</div>'}</div>`;
@@ -649,6 +653,11 @@ function bookingDetailRow(row={},index=-1){
 function addBookingDetail(row={},index=-1){
   $('#bookingDetails').insertAdjacentHTML('beforeend',bookingDetailRow(row,index));
 }
+function bookingSubItemRow(item={}){
+  return `<div class="event-place-row booking-sub-item-row"><div class="event-place-names"><label>顯示名稱<input class="form-input booking-item-name" placeholder="例如：接送集合地點" value="${esc(item.name||'')}"></label><label>韓文名稱<input class="form-input booking-item-name-ko" placeholder="選填" value="${esc(item.nameKo||'')}"></label></div><label>補充說明<textarea class="form-input booking-item-description" rows="2" placeholder="輸入說明、地址或注意事項">${esc(item.description||'')}</textarea></label><label>彈出視窗內容<select class="form-input booking-item-popup"><option value="map" ${item.popupMode!=='website'?'selected':''}>Google 地圖</option><option value="website" ${item.popupMode==='website'?'selected':''}>網站／預訂連結預覽</option></select></label><label>Google 地圖地點或連結<input class="form-input booking-item-map-target" autocapitalize="off" placeholder="輸入地點，或貼上 Google 地圖連結" value="${esc(item.mapTarget||item.googleMaps||'')}"></label><label>網站／預訂連結<input class="form-input booking-item-website" type="url" inputmode="url" autocapitalize="off" placeholder="https://..." value="${esc(item.website||'')}"></label><div class="event-place-actions"><div class="event-place-order"><button type="button" class="admin-text-btn move-booking-item-up">↑ 上移</button><button type="button" class="admin-text-btn move-booking-item-down">↓ 下移</button></div><button type="button" class="admin-text-btn danger-text remove-booking-item">移除</button></div></div>`;
+}
+function addBookingSubItem(item={}){$('#bookingSubItems').insertAdjacentHTML('beforeend',bookingSubItemRow(item));updateBookingSubItemButtons()}
+function updateBookingSubItemButtons(){const rows=[...document.querySelectorAll('.booking-sub-item-row')];rows.forEach((row,index)=>{row.querySelector('.move-booking-item-up').disabled=index===0;row.querySelector('.move-booking-item-down').disabled=index===rows.length-1})}
 function openBookingEditor(id=null){
   if(!state.isAdmin)return;
   const booking=id?state.bookings.find(b=>b.id===id):null;
@@ -659,6 +668,7 @@ function openBookingEditor(id=null){
   $('#bookingPopupMode').value=booking?.popupMode==='website'?'website':'map';
   $('#bookingMapTarget').value=booking?.mapTarget||booking?.googleMaps||'';$('#bookingWebsite').value=booking?.website||'';
   $('#bookingDetails').innerHTML='';(booking?.details||[{}]).forEach((row,index)=>addBookingDetail(row,booking?index:-1));
+  $('#bookingSubItems').innerHTML='';(booking?.items||[]).forEach(addBookingSubItem);updateBookingSubItemButtons();
   showEditorError();$('#itemEditorDialog').showModal();
 }
 async function saveEditor(ev){
@@ -678,8 +688,9 @@ async function saveEditor(ev){
     }else{
       const originalDetails=editorContext.original?.details||[];
       const details=[...document.querySelectorAll('.booking-detail-row')].map(row=>{const index=Number(row.dataset.originalDetail);return {...(index>=0?originalDetails[index]:{}),label:row.querySelector('.detail-label').value.trim(),value:row.querySelector('.detail-value').value.trim(),sensitive:row.querySelector('.detail-sensitive').checked}}).filter(r=>r.label||r.value);
+      const items=[...document.querySelectorAll('.booking-sub-item-row')].map((row,index)=>{const item={name:row.querySelector('.booking-item-name').value.trim(),nameKo:row.querySelector('.booking-item-name-ko').value.trim(),description:row.querySelector('.booking-item-description').value.trim(),popupMode:row.querySelector('.booking-item-popup').value,mapTarget:editorMapTargetElement(row.querySelector('.booking-item-map-target'),`第 ${index+1} 個預訂小項目的 Google 地圖地點或連結`),website:editorUrlValue(row.querySelector('.booking-item-website').value,`第 ${index+1} 個預訂小項目的網站／預訂連結`)};if(item.name&&item.popupMode==='website'&&!item.website)throw new Error(`第 ${index+1} 個預訂小項目選擇了連結預覽，請輸入網站／預訂連結。`);return item}).filter(item=>item.name);
       const original={...(editorContext.original||{})};delete original.id;
-      const item={...original,type:$('#bookingType').value.trim(),title:$('#bookingTitle').value.trim(),details,popupMode:$('#bookingPopupMode').value,mapTarget:editorMapTarget('#bookingMapTarget','Google 地圖地點或連結'),website:editorUrl('#bookingWebsite','網站／預訂連結')};
+      const item={...original,type:$('#bookingType').value.trim(),title:$('#bookingTitle').value.trim(),details,items,popupMode:$('#bookingPopupMode').value,mapTarget:editorMapTarget('#bookingMapTarget','Google 地圖地點或連結'),website:editorUrl('#bookingWebsite','網站／預訂連結')};
       if(!item.title)throw new Error('請輸入預訂名稱。');
       if(item.popupMode==='website'&&!item.website)throw new Error('已選擇連結預覽，請輸入預訂的網站／預訂連結。');
       const id=editorContext.id||`booking-${crypto.randomUUID()}`;
@@ -845,6 +856,14 @@ $('#eventPlaces').onclick=event=>{
 };
 $('#addBookingDetail').onclick=()=>addBookingDetail();
 $('#bookingDetails').onclick=event=>{const remove=event.target.closest('.remove-detail');if(remove)remove.closest('.booking-detail-row').remove()};
+$('#addBookingSubItem').onclick=()=>addBookingSubItem();
+$('#bookingSubItems').onclick=event=>{
+  const row=event.target.closest('.booking-sub-item-row');if(!row)return;
+  if(event.target.closest('.remove-booking-item'))row.remove();
+  else if(event.target.closest('.move-booking-item-up'))row.previousElementSibling?.before(row);
+  else if(event.target.closest('.move-booking-item-down'))row.nextElementSibling?.after(row);
+  updateBookingSubItemButtons();
+};
 
 function resumeAppIfNeeded(source){
   const now=Date.now(),inactiveMs=appHiddenAt?now-appHiddenAt:0,staleLoad=tripLoading&&(now-tripLoadStartedAt>=TRIP_LOAD_TIMEOUT||appHiddenAt>0);
