@@ -323,6 +323,7 @@ function clearPrivateState(){
 }
 
 function setSyncStatus(status){
+  if(state.syncStatus!==status)console.info('[TripSync] status',{from:state.syncStatus,to:status,online:navigator.onLine});
   state.syncStatus=status;
   const el=$('#syncStatus');if(!el)return;
   const labels={synced:['已同步','동기화됨'],syncing:['正在同步…','동기화 중…'],offline:['離線模式','오프라인 모드'],failed:['同步失敗，顯示已儲存資料','동기화 실패, 저장된 데이터 표시 중']};
@@ -457,7 +458,7 @@ async function resolveAccess(user=state.user,runId=accessRunId){
     if(outcome!=='approved'||runId!==accessRunId)return;
     console.info('[Permission] completed',{uid:user.uid,isAdmin:state.isAdmin});
     $('#accessView').classList.add('hidden'); $('#mainView').classList.remove('hidden');
-    if(cachedApproved){setSyncStatus(navigator.onLine?'syncing':'offline');render()}else await loadTrip({source:'startup'});
+    if(cachedApproved)render();else await loadTrip({source:'startup'});
   }catch(error){
     if(runId!==accessRunId)return;
     const code=firebaseErrorCode(error);
@@ -498,7 +499,7 @@ function updateSyncStatus(sources){
   const snapshots=Object.values(sources);
   const allReady=snapshots.every(source=>source.seen);
   const hasPendingWrites=snapshots.some(source=>source.hasPendingWrites);
-  const serverConfirmed=snapshots.some(source=>source.fromCache===false);
+  const serverConfirmed=snapshots.every(source=>source.seen&&source.fromCache===false);
   setSyncStatus(allReady&&!hasPendingWrites&&serverConfirmed?'synced':'syncing');
 }
 function startTripSync(){
@@ -510,6 +511,7 @@ function startTripSync(){
   const refresh=changed=>{if(ready.trip&&ready.days){clearTimeout(tripSyncTimer);tripSyncTimer=null;if((changed||!initialRendered)&&!$('#mainView').classList.contains('hidden')){initialRendered=true;render()}}};
   const listen=(key,reference,convert,getCurrent,setCurrent)=>onSnapshot(reference,{includeMetadataChanges:true},snapshot=>{
     sources[key]={seen:true,fromCache:snapshot.metadata.fromCache,hasPendingWrites:snapshot.metadata.hasPendingWrites};updateSyncStatus(sources);
+    console.info(`[TripSync] ${key} snapshot`,sources[key]);
     const next=convert(snapshot),changed=!sameData(getCurrent(),next);if(changed)setCurrent(next);
     ready[key]=true;refresh(changed);
   },tripSyncError);
@@ -518,6 +520,7 @@ function startTripSync(){
     listen('days',collection(db,'trips',TRIP_ID,'days'),dayRows,()=>state.days,next=>{state.days=next}),
     onSnapshot(collection(db,'trips',TRIP_ID,'bookings'),{includeMetadataChanges:true},snapshot=>{
       sources.bookings={seen:true,fromCache:snapshot.metadata.fromCache,hasPendingWrites:snapshot.metadata.hasPendingWrites};updateSyncStatus(sources);
+      console.info('[TripSync] bookings snapshot',sources.bookings);
       const next=bookingRows(snapshot);if(!sameData(state.bookings,next)){state.bookings=next;if(state.page==='bookings')renderBookings()}
     },tripSyncError)
   ];
