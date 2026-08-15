@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="首爾旅遊" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
   <title>首爾旅遊 2026</title>
-  <link rel="manifest" href="manifest.webmanifest?v=1.26" />
+  <link rel="manifest" href="manifest.webmanifest?v=1.27" />
   <script>
     (() => {
       const pref = localStorage.getItem('themePreference') || 'auto';
@@ -19,7 +19,7 @@
       document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=1.26" />
+  <link rel="stylesheet" href="styles.css?v=1.27" />
 </head>
 <body>
   <div id="app">
@@ -86,6 +86,10 @@
           <label>Google 地圖連結<input id="eventGoogleMaps" class="form-input" type="url" inputmode="url" autocapitalize="off" placeholder="https://maps.google.com/..."></label>
           <label>Naver Map 連結<input id="eventNaverMaps" class="form-input" type="url" inputmode="url" autocapitalize="off" placeholder="https://map.naver.com/..."></label>
           <label>網站／預訂連結<input id="eventWebsite" class="form-input" type="url" inputmode="url" autocapitalize="off" placeholder="https://..."></label>
+          <div>
+            <div class="editor-field-head"><div><strong>行程小項目</strong><div class="muted small">可編輯顯示名稱、韓文名稱及每個項目的連結。</div></div><button id="addEventPlace" type="button" class="secondary-btn small">＋ 新增小項目</button></div>
+            <div id="eventPlaces" class="event-places-editor"></div>
+          </div>
         </div>
         <div id="bookingEditorFields" class="form-stack hidden">
           <label>預訂類別<input id="bookingType" class="form-input" placeholder="例如：航班、酒店、接送"></label>
@@ -111,6 +115,6 @@
     </section>
   </div>
 
-  <script type="module" src="app.js?v=1.26"></script>
+  <script type="module" src="app.js?v=1.27"></script>
 </body>
 </html>
