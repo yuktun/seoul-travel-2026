@@ -102,6 +102,7 @@ let accessInitialization=null;
 let accessRunId=0;
 let returnHotelMigrationPromise=null;
 let returnHotelMigrationComplete=false;
+let airportBookingMigrationPromise=null;
 const ACCESS_RETRY_DELAYS=[800,1500,3000];
 const TRIP_LOAD_TIMEOUT=8000;
 
@@ -572,8 +573,46 @@ async function ensureReturnHotelPlan(){
   return returnHotelMigrationPromise;
 }
 
+async function ensureAirportReturnBooking(){
+  if(!state.isAdmin||!state.user||!state.trip||state.trip.airportReturnBookingV1||airportBookingMigrationPromise)return;
+  const migrationUid=state.user.uid;
+  airportBookingMigrationPromise=(async()=>{
+    const bookingId='tripcom-airport-transfer-2026-08-23';
+    const bookingRef=doc(db,'trips',TRIP_ID,'bookings',bookingId);
+    const exists=(await getDoc(bookingRef)).exists();
+    const batch=writeBatch(db);
+    if(!exists)batch.set(bookingRef,{
+      order:99,
+      type:'送機',
+      title:'酒店 → 仁川國際機場 T1',
+      popupMode:'map',
+      mapTarget:'仁川國際機場 T1',
+      details:[
+        {label:'日期',value:'2026/8/23',sensitive:false},
+        {label:'接送時間',value:'11:10（當地時間）',sensitive:false},
+        {label:'出發地',value:'New Blanc Central Myeongdong／紐布朗中心明洞酒店｜20, Changgyeonggung-ro',sensitive:false},
+        {label:'目的地',value:'仁川國際機場 T1',sensitive:false},
+        {label:'航班',value:'CX411',sensitive:false},
+        {label:'預計車程',value:'約 56 分鐘／62 公里',sensitive:false},
+        {label:'車輛',value:'商務 8 座｜最多 7 人／最多 5 件行李',sensitive:false},
+        {label:'司機資料',value:'2026/8/23 09:10 前更新',sensitive:false},
+        {label:'訂單編號',value:'請由管理員編輯加入',sensitive:true},
+        {label:'PIN 碼',value:'請在 Trip.com App 查看',sensitive:true}
+      ],
+      items:[],
+      updatedAt:serverTimestamp(),
+      updatedBy:migrationUid
+    },{merge:true});
+    batch.set(doc(db,'trips',TRIP_ID),{airportReturnBookingV1:true,updatedAt:serverTimestamp(),updatedBy:migrationUid},{merge:true});
+    await batch.commit();
+    if(state.user?.uid===migrationUid){state.trip.airportReturnBookingV1=true;console.info('[BookingMigration] airport return booking ready',{created:!exists})}
+  })().catch(error=>console.warn('[BookingMigration] airport return booking failed',{code:firebaseErrorCode(error)})).finally(()=>{airportBookingMigrationPromise=null});
+  return airportBookingMigrationPromise;
+}
+
 function render(){
   if(state.isAdmin&&state.days.length&&!returnHotelMigrationComplete)ensureReturnHotelPlan();
+  if(state.isAdmin&&state.trip&&!state.trip.airportReturnBookingV1)ensureAirportReturnBooking();
   if(state.page!=='more'){stopApprovalListener?.();stopApprovalListener=null}
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===state.page));
   const titles=state.language==='ko'?{today:'오늘',days:'일정',bookings:'예약',money:'환율',more:'더보기'}:{today:'今日',days:'行程',bookings:'預訂',money:'匯率',more:'更多'}; $('#pageTitle').textContent=titles[state.page];
