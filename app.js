@@ -5,7 +5,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
 import {
   getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, writeBatch,
-  serverTimestamp, onSnapshot
+  getDocFromCache, getDocsFromCache, serverTimestamp, onSnapshot
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 
 const firebaseConfig = {
@@ -22,6 +22,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
+console.info('[AppInit] start');
 console.info('[access] Firebase Auth initialization started');
 try{await setPersistence(auth,browserLocalPersistence);console.info('[access] local authentication persistence ready')}
 catch(error){console.warn('[access] local authentication persistence unavailable; continuing with Firebase default persistence',{code:error?.code||'',message:error?.message||''})}
@@ -97,6 +98,14 @@ let editorContext=null;
 let accessInitialization=null;
 let accessRunId=0;
 const ACCESS_RETRY_DELAYS=[800,1500,3000];
+let tripLoadPromise=null;
+let tripLoadRunId=0;
+let tripLoading=false;
+let tripLoadStartedAt=0;
+let appHiddenAt=0;
+let lastResumeRestartAt=0;
+const TRIP_LOAD_TIMEOUT=8000;
+const TRIP_RETRY_DELAYS=[800,1500,3000];
 
 const $ = s => document.querySelector(s);
 const content = $('#content');
@@ -240,6 +249,7 @@ async function login(){
 $('#loginBtn').addEventListener('click',login);
 
 onAuthStateChanged(auth,user=>{
+  console.info('[Auth] ready');
   console.info('[access] Firebase Auth initialization completed',user?{uid:user.uid,email:user.email||''}:{user:null});
   initializeAccess({source:'auth-state',restart:true});
 },error=>{
@@ -249,6 +259,7 @@ onAuthStateChanged(auth,user=>{
 
 function clearPrivateState(){
   stopApprovalListener?.(); stopApprovalListener=null;
+  tripLoadRunId++;tripLoadPromise=null;tripLoading=false;tripLoadStartedAt=0;
   state.trip=null;
   state.days=[];
   state.bookings=[];
@@ -287,10 +298,16 @@ function showAccessFailure(error,stage='permission'){
   else showAccessState('temporary');
 }
 function wait(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
+function promiseWithTimeout(promise,timeoutMs,code,label){
+  let timer;const timeout=new Promise((_,reject)=>{timer=setTimeout(()=>{const error=new Error(`${label} timed out`);error.code=code;reject(error)},timeoutMs)});
+  return Promise.race([promise,timeout]).finally(()=>clearTimeout(timer));
+}
 async function withFirebaseRetry(operation,label,user){
   for(let attempt=0;;attempt++){
-    try{return await operation()}
+    const attemptContext={number:attempt+1,active:true};
+    try{return await promiseWithTimeout(operation(attemptContext),8000,'deadline-exceeded',label)}
     catch(error){
+      attemptContext.active=false;
       const code=firebaseErrorCode(error);
       console.warn('[access] Firebase request failed',{operation:label,code,message:error?.message||'',attempt:attempt+1});
       if(!isTransientFirebaseError(error)||attempt>=ACCESS_RETRY_DELAYS.length)throw error;
@@ -334,21 +351,21 @@ async function resolveAccess(user=state.user,runId=accessRunId){
   stopAccessListener?.(); stopAccessListener=null;
   showAccessState('checking');
   console.info('[access] permission check started',{uid:user.uid});
-  try{await withFirebaseRetry(async()=>{
+  try{const outcome=await withFirebaseRetry(async attempt=>{
     console.info('[access] admin document read started',{uid:user.uid});
     const adminSnap=await getDoc(doc(db,'admins',user.uid));
-    if(runId!==accessRunId)return;
+    if(!attempt.active||runId!==accessRunId)return 'stale';
     state.isAdmin=adminSnap.exists();
     console.info('[access] admin result',{isAdmin:state.isAdmin});
     if(!state.isAdmin){
       const requestRef=doc(db,'accessRequests',user.uid);
       console.info('[access] membership document read started',{uid:user.uid});
       let requestSnap=await getDoc(requestRef);
-      if(runId!==accessRunId)return;
+      if(!attempt.active||runId!==accessRunId)return 'stale';
       if(!requestSnap.exists()){
         await setDoc(requestRef,{email:user.email||'',displayName:user.displayName||'',status:'pending',createdAt:serverTimestamp()});
         requestSnap=await getDoc(requestRef);
-        if(runId!==accessRunId)return;
+        if(!attempt.active||runId!==accessRunId)return 'stale';
       }
       const status=requestSnap.data()?.status;
       console.info('[access] membership result',{status:status||'missing'});
@@ -360,13 +377,16 @@ async function resolveAccess(user=state.user,runId=accessRunId){
           if(nextStatus==='approved') initializeAccess({source:'membership-approved'});
           else showAccessState(nextStatus==='rejected'?'rejected':'pending');
         },error=>{console.warn('[access] membership listener failed',{code:firebaseErrorCode(error),message:error?.message||''});initializeAccess({source:'membership-listener-recovery',forceToken:firebaseErrorCode(error)==='unauthenticated'})});
-        return;
+        return 'waiting';
       }
     }
-    if(runId!==accessRunId)return;
+    return 'approved';
+  },'permission-check',user);
+    if(outcome!=='approved'||runId!==accessRunId)return;
+    console.info('[Permission] completed',{uid:user.uid,isAdmin:state.isAdmin});
     $('#accessView').classList.add('hidden'); $('#mainView').classList.remove('hidden');
-    renderLoading(); await loadTrip(); render();
-  },'permission-check',user)}catch(error){if(runId===accessRunId)showAccessFailure(error)}
+    renderLoading();const loaded=await loadTrip({source:'startup'});if(loaded&&runId===accessRunId)render();
+  }catch(error){if(runId===accessRunId)showAccessFailure(error)}
 }
 
 function renderLoading(){
@@ -374,19 +394,81 @@ function renderLoading(){
   content.innerHTML='<div class="card loading-state" role="status"><span class="spinner" aria-hidden="true"></span><div><strong>正在載入行程</strong><div class="muted small">請稍候…</div></div></div>';
 }
 
-async function loadTrip(){
+function tripTimeout(promise,label){
+  return promiseWithTimeout(promise,TRIP_LOAD_TIMEOUT,'trip-timeout',label);
+}
+function tripErrorCode(error){return firebaseErrorCode(error)||String(error?.code||'')}
+function isRetryableTripError(error){return tripErrorCode(error)==='trip-timeout'||isTransientFirebaseError(error)}
+function dayRows(snapshot){return snapshot.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.date.localeCompare(b.date))}
+function bookingRows(snapshot){return snapshot.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(Number.isFinite(a.order)?a.order:Number.MAX_SAFE_INTEGER)-(Number.isFinite(b.order)?b.order:Number.MAX_SAFE_INTEGER)||a.id.localeCompare(b.id))}
+async function readCriticalTrip(useCache=false){
+  console.info('[TripLoad] Firestore request start',{source:useCache?'cache':'default'});
+  const tripRef=doc(db,'trips',TRIP_ID),daysRef=collection(db,'trips',TRIP_ID,'days');
+  const reads=useCache?Promise.all([getDocFromCache(tripRef),getDocsFromCache(daysRef)]):Promise.all([getDoc(tripRef),getDocs(daysRef)]);
+  const [tripSnap,daySnap]=await tripTimeout(reads,useCache?'cached itinerary':'itinerary');
+  return {trip:tripSnap.exists()?tripSnap.data():null,days:dayRows(daySnap)};
+}
+async function loadBookingsOptional(requestId){
+  const started=Date.now();
   try{
-    const tripSnap=await getDoc(doc(db,'trips',TRIP_ID));
-    state.trip=tripSnap.exists()?tripSnap.data():null;
-    const [daySnap,bookSnap]=await Promise.all([
-      getDocs(collection(db,'trips',TRIP_ID,'days')),
-      getDocs(collection(db,'trips',TRIP_ID,'bookings'))
-    ]);
-    state.days=daySnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.date.localeCompare(b.date));
-    state.bookings=bookSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(Number.isFinite(a.order)?a.order:Number.MAX_SAFE_INTEGER)-(Number.isFinite(b.order)?b.order:Number.MAX_SAFE_INTEGER)||a.id.localeCompare(b.id));
-  }catch(e){
-    console.warn('無法載入行程資料。'); state.trip=null; state.days=[]; state.bookings=[];
+    const snapshot=await tripTimeout(getDocs(collection(db,'trips',TRIP_ID,'bookings')),'bookings');
+    if(requestId!==tripLoadRunId)return;
+    state.bookings=bookingRows(snapshot);console.info('[TripLoad] optional bookings success',{requestId,elapsedMs:Date.now()-started});
+    if(state.page==='bookings')renderBookings();
+  }catch(error){
+    if(requestId!==tripLoadRunId)return;
+    try{const cached=await getDocsFromCache(collection(db,'trips',TRIP_ID,'bookings'));if(requestId===tripLoadRunId)state.bookings=bookingRows(cached)}catch(cacheError){}
+    console.warn('[TripLoad] optional bookings unavailable; itinerary remains usable',{requestId,code:tripErrorCode(error),elapsedMs:Date.now()-started});
   }
+}
+function renderTripLoadError(error){
+  $('#pageTitle').textContent='載入行程';
+  content.innerHTML=`<div class="card"><h2>暫時未能載入行程</h2><p class="muted">${isConnectivityError(error)?'網絡連線似乎已中斷，請恢復連線後再試。':'Firebase 暫時未能提供行程資料，請重新載入。'}</p><div class="recovery-actions"><button class="primary-btn" id="retryTripLoad">重新載入</button><button class="secondary-btn" id="returnToday">返回今天</button></div></div>`;
+  $('#retryTripLoad').onclick=()=>restartTripLoad('retry-button');
+  $('#returnToday').onclick=()=>{state.page='today';render()};
+}
+async function loadTrip({force=false,source='manual'}={}){
+  if(tripLoadPromise&&!force){console.info('[TripLoad] reusing active request',{source,requestId:tripLoadRunId});return tripLoadPromise}
+  const requestId=++tripLoadRunId;const started=Date.now();tripLoading=true;tripLoadStartedAt=started;
+  console.info('[TripLoad] start',{source,requestId});
+  const task=(async()=>{
+    let finalError;
+    try{
+      for(let attempt=0;attempt<=TRIP_RETRY_DELAYS.length;attempt++){
+        try{
+          const result=await readCriticalTrip(false);
+          if(requestId!==tripLoadRunId){console.info('[TripLoad] stale response ignored',{requestId});return false}
+          state.trip=result.trip;state.days=result.days;
+          console.info('[TripLoad] Firestore request success',{requestId,attempt:attempt+1,elapsedMs:Date.now()-started});
+          loadBookingsOptional(requestId);return true;
+        }catch(error){
+          finalError=error;console.warn(tripErrorCode(error)==='trip-timeout'?'[TripLoad] timeout':'[TripLoad] request failed',{requestId,attempt:attempt+1,code:tripErrorCode(error),elapsedMs:Date.now()-started});
+          if(requestId!==tripLoadRunId)return false;
+          if(!isRetryableTripError(error)||attempt>=TRIP_RETRY_DELAYS.length)break;
+          console.info(`[TripLoad] retry ${attempt+1}`,{requestId,delay:TRIP_RETRY_DELAYS[attempt]});await wait(TRIP_RETRY_DELAYS[attempt]);
+        }
+      }
+      if(finalError&&!isRetryableTripError(finalError)){
+        if(requestId===tripLoadRunId){console.error('[TripLoad] failure',{requestId,code:tripErrorCode(finalError),elapsedMs:Date.now()-started});renderTripLoadError(finalError)}
+        return false;
+      }
+      try{
+        const cached=await readCriticalTrip(true);
+        if(requestId!==tripLoadRunId)return false;
+        state.trip=cached.trip;state.days=cached.days;console.info('[TripLoad] cached itinerary used',{requestId,elapsedMs:Date.now()-started});loadBookingsOptional(requestId);return true;
+      }catch(cacheError){console.warn('[TripLoad] cache fallback unavailable',{requestId,code:tripErrorCode(cacheError)})}
+      if(requestId===tripLoadRunId){console.error('[TripLoad] failure',{requestId,code:tripErrorCode(finalError),elapsedMs:Date.now()-started});renderTripLoadError(finalError)}
+      return false;
+    }finally{
+      if(requestId===tripLoadRunId){tripLoading=false;tripLoadStartedAt=0;tripLoadPromise=null}
+      console.info('[TripLoad] finished',{requestId,elapsedMs:Date.now()-started});
+    }
+  })();
+  tripLoadPromise=task;return task;
+}
+async function restartTripLoad(source='manual'){
+  if(!state.user)return initializeAccess({source:`trip-${source}`,restart:true});
+  renderLoading();const loaded=await loadTrip({force:true,source});if(loaded)render();
 }
 
 function render(){
@@ -505,7 +587,7 @@ function weatherInfo(code){if(code===0)return ['☀️',t('晴朗','맑음')];if
 function weatherDayLabel(date,index){if(index===0)return t('昨日','어제');if(index===1)return t('今日','오늘');return new Intl.DateTimeFormat(state.language==='ko'?'ko-KR':'zh-HK',{weekday:'short',timeZone:'Asia/Seoul'}).format(new Date(`${date}T12:00:00+09:00`))}
 function weatherDateLabel(date){const [,month,day]=String(date).split('-');return `${Number(day)}/${Number(month)}`}
 function renderWeather(data){const target=$('#weatherDays');if(!target)return;const daily=data?.daily;if(!daily?.time?.length)throw new Error('missing weather');target.innerHTML=daily.time.slice(0,6).map((date,index)=>{const [icon,label]=weatherInfo(daily.weather_code[index]);return `<article class="weather-day ${index===1?'today':''}"><div class="weather-day-name">${esc(weatherDayLabel(date,index))}</div><div class="weather-date">${esc(weatherDateLabel(date))}</div><div class="weather-icon" aria-label="${esc(label)}">${icon}</div><div class="weather-condition">${esc(label)}</div><div class="weather-temp"><strong>${Math.round(daily.temperature_2m_max[index])}°</strong><span>${Math.round(daily.temperature_2m_min[index])}°</span></div><div class="weather-rain">${index>0?`💧 ${Math.round(daily.precipitation_probability_max[index]||0)}%`:t('實況','관측')}</div></article>`}).join('')}
-async function loadWeather(){if(weatherCache){renderWeather(weatherCache);return}try{const response=await fetch('https://api.open-meteo.com/v1/forecast?latitude=37.5665&longitude=126.9780&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FSeoul&past_days=1&forecast_days=5');if(!response.ok)throw new Error();weatherCache=await response.json();renderWeather(weatherCache)}catch(e){const target=$('#weatherDays');if(target)target.innerHTML=`<div class="weather-loading">${t('暫時無法取得天氣，請稍後再試。','날씨를 불러올 수 없습니다. 잠시 후 다시 시도하세요.')}</div>`}}
+async function loadWeather(){if(weatherCache){renderWeather(weatherCache);return}try{const response=await promiseWithTimeout(fetch('https://api.open-meteo.com/v1/forecast?latitude=37.5665&longitude=126.9780&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FSeoul&past_days=1&forecast_days=5'),8000,'weather-timeout','weather');if(!response.ok)throw new Error();weatherCache=await response.json();renderWeather(weatherCache)}catch(e){const target=$('#weatherDays');if(target)target.innerHTML=`<div class="weather-loading">${t('暫時無法取得天氣，請稍後再試。','날씨를 불러올 수 없습니다. 잠시 후 다시 시도하세요.')}</div>`}}
 
 function renderDays(){
   content.innerHTML=state.days.map(d=>`<div class="card day-card" data-day="${esc(d.id)}"><div class="day-row"><div><div class="day-date">${esc(d.dateLabel||d.date)}</div><div class="day-area">${esc(localized(d,'area')||'')}</div></div><div class="chev">›</div></div></div>`).join('');
@@ -720,7 +802,7 @@ async function importPrivateData(ev){
     for(const d of payload.days||[]) batch.set(doc(db,'trips',TRIP_ID,'days',d.id),d.data,{merge:true});
     for(const b of payload.bookings||[]) batch.set(doc(db,'trips',TRIP_ID,'bookings',b.id),b.data,{merge:true});
     await batch.commit();
-    status.textContent='✅ 匯入完成。'; await loadTrip(); state.page='today'; render();
+    status.textContent='✅ 匯入完成。';const loaded=await loadTrip({force:true,source:'import'});if(loaded){state.page='today';render()}
   }catch(e){status.textContent='❌ 匯入失敗：'+e.message}
 }
 
@@ -749,6 +831,20 @@ $('#eventPlaces').onclick=event=>{
 };
 $('#addBookingDetail').onclick=()=>addBookingDetail();
 $('#bookingDetails').onclick=event=>{const remove=event.target.closest('.remove-detail');if(remove)remove.closest('.booking-detail-row').remove()};
+
+function resumeAppIfNeeded(source){
+  const now=Date.now(),inactiveMs=appHiddenAt?now-appHiddenAt:0,staleLoad=tripLoading&&(now-tripLoadStartedAt>=TRIP_LOAD_TIMEOUT||appHiddenAt>0);
+  console.info('[Visibility] app resumed',{source,inactiveMs,tripLoading,staleLoad});
+  appHiddenAt=0;
+  if((inactiveMs>=60000||staleLoad)&&now-lastResumeRestartAt>1500){
+    lastResumeRestartAt=now;console.info('[Visibility] restarting stale load',{source,inactiveMs});initializeAccess({source:`${source}-resume`,restart:true});
+  }
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='hidden'){appHiddenAt=Date.now();console.info('[Visibility] app background')}
+  else resumeAppIfNeeded('visibility');
+});
+window.addEventListener('pageshow',event=>{if(event.persisted||tripLoading)resumeAppIfNeeded('pageshow')});
 
 window.addEventListener('beforeinstallprompt',e=>{
   e.preventDefault(); installPrompt=e;
