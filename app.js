@@ -100,6 +100,8 @@ let installPrompt=null;
 let editorContext=null;
 let accessInitialization=null;
 let accessRunId=0;
+let returnHotelMigrationPromise=null;
+let returnHotelMigrationComplete=false;
 const ACCESS_RETRY_DELAYS=[800,1500,3000];
 const TRIP_LOAD_TIMEOUT=8000;
 
@@ -257,7 +259,8 @@ function subwayRouteHtml(subway){
 }
 const ITINERARY_SUBWAY_ROUTES={
   '2026-08-20':{
-    '孔德':{stations:[{name:'鐘路3街',nameKo:'종로3가',line:'5',code:'534'},{name:'孔德',nameKo:'공덕',line:'5',code:'529'}],duration:'由仁寺洞步行至鐘路3街站後，5 號線直達，地鐵約 9–10 分鐘',durationKo:'인사동에서 종로3가역까지 걸은 뒤 5호선 직통, 약 9–10분',exit:'孔德站 5 號出口',exitKo:'공덕역 5번 출구'}
+    '孔德':{stations:[{name:'鐘路3街',nameKo:'종로3가',line:'5',code:'534'},{name:'孔德',nameKo:'공덕',line:'5',code:'529'}],duration:'由仁寺洞步行至鐘路3街站後，5 號線直達，地鐵約 9–10 分鐘',durationKo:'인사동에서 종로3가역까지 걸은 뒤 5호선 직통, 약 9–10분',exit:'孔德站 5 號出口',exitKo:'공덕역 5번 출구'},
+    '回酒店':{stations:[{name:'孔德',nameKo:'공덕',line:'5',code:'529'},{name:'乙支路4街',nameKo:'을지로4가',line:'5',code:'535'}],duration:'5 號線直達｜約 11 分鐘｜毋須轉車',durationKo:'5호선 직통｜약 11분｜환승 없음',exit:'8 號出口',exitKo:'8번 출구'}
   },
   '2026-08-21':{
     '聖水午餐':{stations:[{name:'乙支路4街',nameKo:'을지로4가',line:'2',code:'204'},{name:'聖水',nameKo:'성수',line:'2',code:'211'}],duration:'2 號線直達｜地鐵約 13 分鐘｜酒店步行至乙支路4街站約 3–5 分鐘',durationKo:'2호선 직통｜약 13분｜호텔에서 을지로4가역까지 도보 약 3–5분',exit:'聖水站 4 號出口',exitKo:'성수역 4번 출구'},
@@ -266,7 +269,8 @@ const ITINERARY_SUBWAY_ROUTES={
   },
   '2026-08-22':{
     '望遠市場':{stations:[{name:'乙支路4街',nameKo:'을지로4가',line:'2',code:'204'},{name:'合井',nameKo:'합정',lines:['2','6'],code:'238/622'},{name:'望遠',nameKo:'망원',line:'6',code:'621'}],duration:'2 號線 → 6 號線｜合井轉乘｜地鐵約 20–25 分鐘｜全程預留約 25–30 分鐘',durationKo:'2호선 → 6호선｜합정 환승｜지하철 약 20–25분｜전체 약 25–30분',exit:'望遠站 2 號出口',exitKo:'망원역 2번 출구'},
-    '弘大商業街':{stations:[{name:'望遠',nameKo:'망원',line:'6',code:'621'},{name:'上水',nameKo:'상수',line:'6',code:'623'}],duration:'6 號線直達｜約 4 分鐘｜毋須轉車',durationKo:'6호선 직통｜약 4분｜환승 없음',exit:'上水站 1 號出口（適合弘大南面商圈）',exitKo:'상수역 1번 출구 (홍대 남쪽 상권)'}
+    '弘大商業街':{stations:[{name:'望遠',nameKo:'망원',line:'6',code:'621'},{name:'上水',nameKo:'상수',line:'6',code:'623'}],duration:'6 號線直達｜約 4 分鐘｜毋須轉車',durationKo:'6호선 직통｜약 4분｜환승 없음',exit:'上水站 1 號出口（適合弘大南面商圈）',exitKo:'상수역 1번 출구 (홍대 남쪽 상권)'},
+    '回酒店':{stations:[{name:'弘大入口',nameKo:'홍대입구',line:'2',code:'239'},{name:'乙支路4街',nameKo:'을지로4가',line:'2',code:'204'}],duration:'2 號線直達｜約 14 分鐘｜毋須轉車',durationKo:'2호선 직통｜약 14분｜환승 없음',exit:'8 號出口',exitKo:'8번 출구'}
   }
 };
 function itinerarySubway(dayId,event){
@@ -306,6 +310,7 @@ onAuthStateChanged(auth,user=>{
 function clearPrivateState(){
   stopApprovalListener?.(); stopApprovalListener=null;
   stopTripSync();
+  returnHotelMigrationComplete=false;
   state.trip=null;
   state.days=[];
   state.bookings=[];
@@ -523,7 +528,44 @@ async function loadTrip({source='manual'}={}){
 }
 async function restartTripLoad(source='manual'){if(!state.user)return initializeAccess({source:`trip-${source}`,restart:true});await loadTrip({source})}
 
+async function ensureReturnHotelPlan(){
+  if(!state.isAdmin||!state.user||returnHotelMigrationComplete||returnHotelMigrationPromise||!state.days.length)return;
+  const migrationUid=state.user.uid;
+  returnHotelMigrationPromise=(async()=>{
+    const changes=[];
+    for(const day of state.days){
+      if(day.returnHotelPlanV1)continue;
+      const events=[...(day.events||[])];
+      if(day.date==='2026-08-20'){
+        if(!events.some(event=>event.systemKey==='return-hotel-2026-v1'||event.title==='回酒店'))events.push({systemKey:'return-hotel-2026-v1',time:'晚上',title:'回酒店',note:'乙支路4街站 8 號出口 → 酒店步行約 3–5 分鐘',tags:[],places:[]});
+        changes.push({day,events});
+      }else if(day.date==='2026-08-21'){
+        const at=events.findIndex(event=>event.title==='清溪川');
+        if(at>=0){
+          const suggestion='建議沿清溪川向乙支路4街方向散步，之後步行回酒店。如在光化門一帶結束：5 號線 光化門 533 → 乙支路4街 535，約 6 分鐘。';
+          if(!String(events[at].note||'').includes('沿清溪川向乙支路4街方向散步'))events[at]={...events[at],note:`${events[at].note||''}${events[at].note?'。':''}${suggestion}`};
+        }
+        changes.push({day,events});
+      }else if(day.date==='2026-08-22'){
+        if(!events.some(event=>event.systemKey==='return-hotel-2026-v1'||event.title==='回酒店'))events.push({systemKey:'return-hotel-2026-v1',time:'晚上',title:'回酒店',note:'延南洞 → 弘大入口站：步行約 5–10 分鐘；乙支路4街站 8 號出口 → 酒店步行約 3–5 分鐘',tags:[],places:[]});
+        changes.push({day,events});
+      }
+    }
+    if(changes.length){
+      const batch=writeBatch(db);
+      changes.forEach(({day,events})=>batch.set(doc(db,'trips',TRIP_ID,'days',day.id),{events,returnHotelPlanV1:true,updatedAt:serverTimestamp(),updatedBy:migrationUid},{merge:true}));
+      await batch.commit();
+      if(state.user?.uid!==migrationUid)return;
+      changes.forEach(({day,events})=>{day.events=events;day.returnHotelPlanV1=true});
+      render();
+    }
+    if(state.user?.uid===migrationUid)returnHotelMigrationComplete=true;
+  })().catch(error=>console.warn('[ReturnHotelPlan] migration failed',{code:firebaseErrorCode(error)})).finally(()=>{returnHotelMigrationPromise=null});
+  return returnHotelMigrationPromise;
+}
+
 function render(){
+  if(state.isAdmin&&state.days.length&&!returnHotelMigrationComplete)ensureReturnHotelPlan();
   if(state.page!=='more'){stopApprovalListener?.();stopApprovalListener=null}
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===state.page));
   const titles=state.language==='ko'?{today:'오늘',days:'일정',bookings:'예약',money:'환율',more:'더보기'}:{today:'今日',days:'行程',bookings:'預訂',money:'匯率',more:'更多'}; $('#pageTitle').textContent=titles[state.page];
