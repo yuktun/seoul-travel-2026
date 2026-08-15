@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="首爾旅遊" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
   <title>首爾旅遊 2026</title>
-  <link rel="manifest" href="manifest.webmanifest?v=1.31" />
+  <link rel="manifest" href="manifest.webmanifest?v=1.32" />
   <script>
     (() => {
       const pref = localStorage.getItem('themePreference') || 'auto';
@@ -19,7 +19,7 @@
       document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=1.31" />
+  <link rel="stylesheet" href="styles.css?v=1.32" />
 </head>
 <body>
   <div id="app">
@@ -83,6 +83,7 @@
           <label>行程名稱<input id="eventTitle" class="form-input" placeholder="輸入地點或活動名稱"></label>
           <label>描述<textarea id="eventNote" class="form-input" rows="4" placeholder="交通、地址或補充資料"></textarea></label>
           <label>標籤<input id="eventTags" class="form-input" placeholder="例如：必去、可略過"></label>
+          <label>彈出視窗內容<select id="eventPopupMode" class="form-input"><option value="map">Google 地圖</option><option value="website">網站／預訂連結預覽</option></select></label>
           <label>Google 地圖連結<input id="eventGoogleMaps" class="form-input" type="url" inputmode="url" autocapitalize="off" placeholder="https://maps.google.com/..."></label>
           <label>Naver Map 連結<input id="eventNaverMaps" class="form-input" type="url" inputmode="url" autocapitalize="off" placeholder="https://map.naver.com/..."></label>
           <label>網站／預訂連結<input id="eventWebsite" class="form-input" type="url" inputmode="url" autocapitalize="off" placeholder="https://..."></label>
@@ -94,6 +95,7 @@
         <div id="bookingEditorFields" class="form-stack hidden">
           <label>預訂類別<input id="bookingType" class="form-input" placeholder="例如：航班、酒店、接送"></label>
           <label>預訂名稱<input id="bookingTitle" class="form-input" placeholder="輸入預訂名稱"></label>
+          <label>彈出視窗內容<select id="bookingPopupMode" class="form-input"><option value="map">Google 地圖</option><option value="website">網站／預訂連結預覽</option></select></label>
           <label>Google 地圖連結<input id="bookingGoogleMaps" class="form-input" type="url" inputmode="url" autocapitalize="off" placeholder="https://maps.google.com/..."></label>
           <label>Naver Map 連結<input id="bookingNaverMaps" class="form-input" type="url" inputmode="url" autocapitalize="off" placeholder="https://map.naver.com/..."></label>
           <label>網站／預訂連結<input id="bookingWebsite" class="form-input" type="url" inputmode="url" autocapitalize="off" placeholder="https://..."></label>
@@ -116,6 +118,6 @@
     </section>
   </div>
 
-  <script type="module" src="app.js?v=1.31"></script>
+  <script type="module" src="app.js?v=1.32"></script>
 </body>
 </html>

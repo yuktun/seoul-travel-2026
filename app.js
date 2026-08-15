@@ -542,7 +542,7 @@ function openDetail(item,isBooking=false){
   const title=localized(item,'title')||t('地點資料','장소 정보');
   const query=`${item.mapQuery||title} Seoul`;
   const mapUrl=externalUrl(item.googleMaps)||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
-  const previewUrl=!isBooking&&item.popupMode==='website'?externalUrl(item.website):'';
+  const previewUrl=item.popupMode==='website'?externalUrl(item.website):'';
   $('#detailTitle').textContent=title;
   if(isBooking){
     $('#detailIntro').innerHTML=`<div class="detail-kv">${(item.details||[]).map(r=>`<div>${esc(r.label||'')}</div><div class="${r.sensitive?'sensitive':''}">${bookingValueHtml(r)}</div>`).join('')}</div>${(item.details||[]).some(r=>r.sensitive)?`<button class="secondary-btn card-action-btn" id="detailReveal">${t('顯示／隱藏敏感資料','민감한 정보 표시/숨기기')}</button>`:''}`;
@@ -629,6 +629,7 @@ function openEventEditor(dayId,index=null){
   $('#eventEditorFields').classList.remove('hidden');$('#bookingEditorFields').classList.add('hidden');
   $('#eventTime').value=event?.time||'';$('#eventTitle').value=event?.title||'';$('#eventNote').value=event?.note||'';
   $('#eventTags').value=(event?.tags||[]).join('、');showEditorError();$('#itemEditorDialog').showModal();
+  $('#eventPopupMode').value=event?.popupMode==='website'?'website':'map';
   $('#eventGoogleMaps').value=event?.googleMaps||'';$('#eventNaverMaps').value=event?.naverMaps||'';$('#eventWebsite').value=event?.website||'';
   $('#eventPlaces').innerHTML='';eventPlaceItems(event||{}).forEach(addEventPlace);updateEventPlaceButtons();
 }
@@ -645,6 +646,7 @@ function openBookingEditor(id=null){
   $('#editorTitle').textContent=booking?'編輯預訂':'新增預訂';
   $('#eventEditorFields').classList.add('hidden');$('#bookingEditorFields').classList.remove('hidden');
   $('#bookingType').value=booking?.type||'';$('#bookingTitle').value=booking?.title||'';
+  $('#bookingPopupMode').value=booking?.popupMode==='website'?'website':'map';
   $('#bookingGoogleMaps').value=booking?.googleMaps||'';$('#bookingNaverMaps').value=booking?.naverMaps||'';$('#bookingWebsite').value=booking?.website||'';
   $('#bookingDetails').innerHTML='';(booking?.details||[{}]).forEach((row,index)=>addBookingDetail(row,booking?index:-1));
   showEditorError();$('#itemEditorDialog').showModal();
@@ -656,8 +658,9 @@ async function saveEditor(ev){
     if(editorContext.kind==='event'){
       const day=state.days.find(d=>d.id===editorContext.dayId);if(!day)throw new Error();
       const places=[...document.querySelectorAll('.event-place-row')].map((row,index)=>{const place={name:row.querySelector('.place-name').value.trim(),nameKo:row.querySelector('.place-name-ko').value.trim(),popupMode:row.querySelector('.place-popup').value,googleMaps:editorUrlValue(row.querySelector('.place-google').value,`第 ${index+1} 個小項目的 Google 地圖連結`),naverMaps:editorUrlValue(row.querySelector('.place-naver').value,`第 ${index+1} 個小項目的 Naver Map 連結`),website:editorUrlValue(row.querySelector('.place-website').value,`第 ${index+1} 個小項目的網站／預訂連結`)};if(place.name&&place.popupMode==='website'&&!place.website)throw new Error(`第 ${index+1} 個小項目選擇了連結預覽，請輸入網站／預訂連結。`);return place}).filter(place=>place.name);
-      const item={...(editorContext.original||{}),time:$('#eventTime').value.trim(),title:$('#eventTitle').value.trim(),note:$('#eventNote').value.trim(),tags:$('#eventTags').value.split(/[、,]/).map(x=>x.trim()).filter(Boolean),places,placeNamesKo:places.map(place=>place.nameKo),googleMaps:editorUrl('#eventGoogleMaps','Google 地圖連結'),naverMaps:editorUrl('#eventNaverMaps','Naver Map 連結'),website:editorUrl('#eventWebsite','網站／預訂連結')};
+      const item={...(editorContext.original||{}),time:$('#eventTime').value.trim(),title:$('#eventTitle').value.trim(),note:$('#eventNote').value.trim(),tags:$('#eventTags').value.split(/[、,]/).map(x=>x.trim()).filter(Boolean),places,placeNamesKo:places.map(place=>place.nameKo),popupMode:$('#eventPopupMode').value,googleMaps:editorUrl('#eventGoogleMaps','Google 地圖連結'),naverMaps:editorUrl('#eventNaverMaps','Naver Map 連結'),website:editorUrl('#eventWebsite','網站／預訂連結')};
       if(!item.title)throw new Error('請輸入行程名稱。');
+      if(item.popupMode==='website'&&!item.website)throw new Error('已選擇連結預覽，請輸入行程的網站／預訂連結。');
       const events=[...(day.events||[])];
       if(editorContext.index===null)events.push(item);else events[editorContext.index]=item;
       await setDoc(doc(db,'trips',TRIP_ID,'days',day.id),{events,updatedAt:serverTimestamp(),updatedBy:state.user.uid},{merge:true});
@@ -666,8 +669,9 @@ async function saveEditor(ev){
       const originalDetails=editorContext.original?.details||[];
       const details=[...document.querySelectorAll('.booking-detail-row')].map(row=>{const index=Number(row.dataset.originalDetail);return {...(index>=0?originalDetails[index]:{}),label:row.querySelector('.detail-label').value.trim(),value:row.querySelector('.detail-value').value.trim(),sensitive:row.querySelector('.detail-sensitive').checked}}).filter(r=>r.label||r.value);
       const original={...(editorContext.original||{})};delete original.id;
-      const item={...original,type:$('#bookingType').value.trim(),title:$('#bookingTitle').value.trim(),details,googleMaps:editorUrl('#bookingGoogleMaps','Google 地圖連結'),naverMaps:editorUrl('#bookingNaverMaps','Naver Map 連結'),website:editorUrl('#bookingWebsite','網站／預訂連結')};
+      const item={...original,type:$('#bookingType').value.trim(),title:$('#bookingTitle').value.trim(),details,popupMode:$('#bookingPopupMode').value,googleMaps:editorUrl('#bookingGoogleMaps','Google 地圖連結'),naverMaps:editorUrl('#bookingNaverMaps','Naver Map 連結'),website:editorUrl('#bookingWebsite','網站／預訂連結')};
       if(!item.title)throw new Error('請輸入預訂名稱。');
+      if(item.popupMode==='website'&&!item.website)throw new Error('已選擇連結預覽，請輸入預訂的網站／預訂連結。');
       const id=editorContext.id||`booking-${crypto.randomUUID()}`;
       if(!editorContext.id)item.order=Math.max(-1,...state.bookings.map(booking=>Number.isFinite(booking.order)?booking.order:-1))+1;
       await setDoc(doc(db,'trips',TRIP_ID,'bookings',id),{...item,updatedAt:serverTimestamp(),updatedBy:state.user.uid},{merge:true});
