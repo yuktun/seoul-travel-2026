@@ -259,6 +259,22 @@ function subwayRouteHtml(subway){
   if(duration)meta.push(esc(duration));if(exit)meta.push(esc(exit));
   return `<div class="subway-route"><div class="subway-route-label">🚇 ${t('地鐵路線','지하철 경로')}</div><div class="subway-stations">${stations}</div>${meta.length?`<div class="subway-meta">${meta.join('<span aria-hidden="true">｜</span>')}</div>`:''}</div>`;
 }
+const ITINERARY_SUBWAY_ROUTES={
+  '2026-08-20':{
+    '廣藏市場':{stations:[{name:'明洞站',nameKo:'명동역',line:'4'},{name:'東大門站',nameKo:'동대문역',lines:['4','1']},{name:'鐘路5街站',nameKo:'종로5가역',line:'1'}],duration:'約 12 分鐘',durationKo:'약 12분',exit:'鐘路5街站 8 號出口',exitKo:'종로5가역 8번 출구'},
+    '孔德':{stations:[{name:'鐘路3街站',nameKo:'종로3가역',line:'5'},{name:'孔德站',nameKo:'공덕역',line:'5'}],duration:'由仁寺洞步行到鐘路3街站後，車程約 10 分鐘',durationKo:'인사동에서 종로3가역까지 걸은 뒤 약 10분',exit:'孔德站 5 號出口',exitKo:'공덕역 5번 출구'}
+  },
+  '2026-08-21':{
+    '聖水午餐':{stations:[{name:'明洞站',nameKo:'명동역',line:'4'},{name:'東大門歷史文化公園站',nameKo:'동대문역사문화공원역',lines:['4','2']},{name:'聖水站',nameKo:'성수역',line:'2'}],duration:'約 17 分鐘',durationKo:'약 17분',exit:'聖水站 4 號出口',exitKo:'성수역 4번 출구'},
+    '東大門':{stations:[{name:'聖水站',nameKo:'성수역',line:'2'},{name:'東大門歷史文化公園站',nameKo:'동대문역사문화공원역',line:'2'}],duration:'約 11 分鐘，前往 DDP 最方便',durationKo:'약 11분, DDP로 갈 때 가장 편리',exit:'DDP：1 號出口',exitKo:'DDP: 1번 출구'},
+    '明洞':{stations:[{name:'東大門站',nameKo:'동대문역',line:'4'},{name:'明洞站',nameKo:'명동역',line:'4'}],duration:'約 5 分鐘，毋須轉車',durationKo:'약 5분, 환승 없음'}
+  },
+  '2026-08-22':{
+    '望遠市場':{stations:[{name:'明洞站',nameKo:'명동역',line:'4'},{name:'三角地站',nameKo:'삼각지역',lines:['4','6']},{name:'望遠站',nameKo:'망원역',line:'6'}],duration:'約 28–30 分鐘',durationKo:'약 28–30분',exit:'望遠站 2 號出口',exitKo:'망원역 2번 출구'},
+    '弘大商業街':{stations:[{name:'望遠站',nameKo:'망원역',line:'6'},{name:'上水站',nameKo:'상수역',line:'6'}],duration:'約 4 分鐘，毋須轉車',durationKo:'약 4분, 환승 없음',exit:'上水站 1 號出口（適合弘大南面商圈）',exitKo:'상수역 1번 출구 (홍대 남쪽 상권)'}
+  }
+};
+function itinerarySubway(dayId,event){return event?.subway||ITINERARY_SUBWAY_ROUTES[dayId]?.[event?.title]||null}
 function money(n){return new Intl.NumberFormat('zh-HK',{maximumFractionDigits:2}).format(n||0)}
 function fmtDate(d){return new Intl.DateTimeFormat('zh-HK',{month:'numeric',day:'numeric',weekday:'short'}).format(d)}
 
@@ -535,7 +551,7 @@ function eventHtml(e,dayId,index){
   const day=state.days.find(x=>x.id===dayId);
   const eventCount=day?.events?.length||0;
   const adminActions=state.isAdmin?`<div class="admin-item-actions"><div class="admin-order-actions" aria-label="調整行程次序"><button class="admin-text-btn order-btn" data-move-event="${esc(dayId)}" data-event-index="${index}" data-direction="-1" ${index===0?'disabled':''}>↑ 上移</button><button class="admin-text-btn order-btn" data-move-event="${esc(dayId)}" data-event-index="${index}" data-direction="1" ${index===eventCount-1?'disabled':''}>↓ 下移</button></div><div class="admin-edit-actions"><button class="admin-text-btn" data-edit-event="${esc(dayId)}" data-event-index="${index}">編輯</button><button class="admin-text-btn danger-text" data-delete-event="${esc(dayId)}" data-event-index="${index}">刪除</button></div></div>`:'';
-  return `<div class="event"><div class="time">${esc(e.time||'')}</div><div><button class="event-title item-link" data-event-day="${esc(dayId)}" data-event-index="${index}">${esc(localized(e,'title')||'')}</button>${e.note?`<div class="event-note">${eventNoteHtml(e,day)}</div>`:''}${subwayRouteHtml(e.subway)}${badges}${externalLinksHtml(e)}${adminActions}</div></div>`;
+  return `<div class="event"><div class="time">${esc(e.time||'')}</div><div><button class="event-title item-link" data-event-day="${esc(dayId)}" data-event-index="${index}">${esc(localized(e,'title')||'')}</button>${e.note?`<div class="event-note">${eventNoteHtml(e,day)}</div>`:''}${subwayRouteHtml(itinerarySubway(dayId,e))}${badges}${externalLinksHtml(e)}${adminActions}</div></div>`;
 }
 
 function bindDetailLinks(){
