@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="首爾旅遊" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
   <title>首爾旅遊 2026</title>
-  <link rel="manifest" href="manifest.webmanifest?v=1.45" />
+  <link rel="manifest" href="manifest.webmanifest?v=1.46" />
   <script>
     (() => {
       const pref = localStorage.getItem('themePreference') || 'auto';
@@ -19,7 +19,7 @@
       document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=1.45" />
+  <link rel="stylesheet" href="styles.css?v=1.46" />
 </head>
 <body>
   <div id="app">
@@ -81,11 +81,12 @@
         <div id="eventEditorFields" class="form-stack">
           <label>時間<input id="eventTime" class="form-input" placeholder="例如：10:30–12:30"></label>
           <label>行程名稱<input id="eventTitle" class="form-input" placeholder="輸入地點或活動名稱"></label>
+          <label>韓文名稱<input id="eventTitleKo" class="form-input" lang="ko" placeholder="從 Google 地圖複製韓文名稱；Naver Map 會優先使用"></label>
           <label>描述<textarea id="eventNote" class="form-input" rows="4" placeholder="交通、地址或補充資料"></textarea></label>
           <label>標籤<input id="eventTags" class="form-input" placeholder="例如：必去、可略過"></label>
           <label>彈出視窗內容<select id="eventPopupMode" class="form-input"><option value="map">地圖</option><option value="website">網站／預訂連結預覽</option></select></label>
           <label>Google 地圖地點或連結<input id="eventMapTarget" class="form-input" autocapitalize="off" placeholder="例如：仁川國際機場 T1，或貼上 Google 地圖連結"><span class="muted small">留空時會使用行程名稱搜尋。</span></label>
-          <label>Naver Map 地點或連結<input id="eventNaverTarget" class="form-input" autocapitalize="off" placeholder="例如：인천국제공항 제1여객터미널，或貼上 Naver Map 連結"><span class="muted small">留空時會使用與 Google 地圖相同的地點搜尋。</span></label>
+          <label>Naver Map 地點或連結<input id="eventNaverTarget" class="form-input" autocapitalize="off" placeholder="例如：인천국제공항 제1여객터미널，或貼上 Naver Map 連結"><span class="muted small">留空時會優先使用上方韓文名稱搜尋。</span></label>
           <label>網站／預訂連結<input id="eventWebsite" class="form-input" type="url" inputmode="url" autocapitalize="off" placeholder="https://..."></label>
           <div>
             <div class="editor-field-head"><div><strong>行程小項目</strong><div class="muted small">可編輯顯示名稱、韓文名稱及每個項目的連結。</div></div><button id="addEventPlace" type="button" class="secondary-btn small">＋ 新增小項目</button></div>
@@ -95,9 +96,10 @@
         <div id="bookingEditorFields" class="form-stack hidden">
           <label>預訂類別<input id="bookingType" class="form-input" placeholder="例如：航班、酒店、接送"></label>
           <label>預訂名稱<input id="bookingTitle" class="form-input" placeholder="輸入預訂名稱"></label>
+          <label>韓文名稱<input id="bookingTitleKo" class="form-input" lang="ko" placeholder="從 Google 地圖複製韓文名稱；Naver Map 會優先使用"></label>
           <label>彈出視窗內容<select id="bookingPopupMode" class="form-input"><option value="map">地圖</option><option value="website">網站／預訂連結預覽</option></select></label>
           <label>Google 地圖地點或連結<input id="bookingMapTarget" class="form-input" autocapitalize="off" placeholder="例如：明洞某酒店，或貼上 Google 地圖連結"><span class="muted small">留空時會使用預訂名稱搜尋。</span></label>
-          <label>Naver Map 地點或連結<input id="bookingNaverTarget" class="form-input" autocapitalize="off" placeholder="輸入韓文地點，或貼上 Naver Map 連結"><span class="muted small">留空時會使用與 Google 地圖相同的地點搜尋。</span></label>
+          <label>Naver Map 地點或連結<input id="bookingNaverTarget" class="form-input" autocapitalize="off" placeholder="輸入韓文地點，或貼上 Naver Map 連結"><span class="muted small">留空時會優先使用上方韓文名稱搜尋。</span></label>
           <label>網站／預訂連結<input id="bookingWebsite" class="form-input" type="url" inputmode="url" autocapitalize="off" placeholder="https://..."></label>
           <div><div class="editor-field-head"><strong>詳細資料</strong><button id="addBookingDetail" type="button" class="secondary-btn small">＋ 新增一行</button></div><div id="bookingDetails" class="booking-details-editor"></div></div>
           <div><div class="editor-field-head"><div><strong>預訂小項目</strong><div class="muted small">可加入補充說明、地圖或網站連結。</div></div><button id="addBookingSubItem" type="button" class="secondary-btn small">＋ 新增小項目</button></div><div id="bookingSubItems" class="event-places-editor"></div></div>
@@ -119,6 +121,6 @@
     </section>
   </div>
 
-  <script type="module" src="app.js?v=1.45"></script>
+  <script type="module" src="app.js?v=1.46"></script>
 </body>
 </html>

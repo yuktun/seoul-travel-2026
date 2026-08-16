@@ -1,5 +1,5 @@
-const CACHE='seoul-travel-v1.45';
-const ASSETS=['./','./index.html','./styles.css?v=1.45','./app.js?v=1.45','./manifest.webmanifest?v=1.45','./app-icon-192.png','./app-icon-512.png','./apple-touch-icon.png'];
+const CACHE='seoul-travel-v1.46';
+const ASSETS=['./','./index.html','./styles.css?v=1.46','./app.js?v=1.46','./manifest.webmanifest?v=1.46','./app-icon-192.png','./app-icon-512.png','./apple-touch-icon.png'];
 const FIREBASE_SDK=[
   'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js',
   'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js',
