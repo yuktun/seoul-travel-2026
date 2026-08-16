@@ -740,6 +740,12 @@ function closeDetail(){
   $('#detailDialog').setAttribute('aria-hidden','true'); document.body.classList.remove('modal-open');
 }
 
+function openMapInNewContext(event){
+  const link=event.currentTarget;
+  const opened=window.open('about:blank','_blank');
+  if(opened){opened.opener=null;opened.location.replace(link.href);event.preventDefault()}
+}
+
 function repairViewportAfterResume(){
   applyTheme();
   const detail=$('#detailDialog');
@@ -1017,6 +1023,8 @@ $('#retryAccessBtn').onclick=()=>initializeAccess({source:'retry-button',forceTo
 $('#languageBtn').onclick=()=>{state.language=state.language==='ko'?'zh':'ko';localStorage.setItem('displayLanguage',state.language);render();if(state.language==='ko'){const d=targetDay();const e=d?.events?.[0];if(e)openDetail(e)}};
 $('#closeDetail').onclick=closeDetail;
 $('#closeDetailBottom').onclick=closeDetail;
+$('#openGoogleMaps').onclick=openMapInNewContext;
+$('#openNaverMaps').onclick=openMapInNewContext;
 $('#detailDialog').onclick=e=>{if(e.target===$('#detailDialog'))closeDetail()};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#detailDialog').classList.contains('hidden'))closeDetail()});
 $('#closeInstall').onclick=()=>$('#installDialog').close();
