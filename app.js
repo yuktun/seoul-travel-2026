@@ -574,7 +574,7 @@ async function ensureReturnHotelPlan(){
 }
 
 async function ensureAirportReturnBooking(){
-  if(!state.isAdmin||!state.user||!state.trip||state.trip.airportReturnBookingV1||airportBookingMigrationPromise)return;
+  if(!state.isAdmin||!state.user||!state.trip||state.trip.airportReturnBookingV2||airportBookingMigrationPromise)return;
   const migrationUid=state.user.uid;
   airportBookingMigrationPromise=(async()=>{
     const bookingId='tripcom-airport-transfer-2026-08-23';
@@ -603,16 +603,16 @@ async function ensureAirportReturnBooking(){
       updatedAt:serverTimestamp(),
       updatedBy:migrationUid
     },{merge:true});
-    batch.set(doc(db,'trips',TRIP_ID),{airportReturnBookingV1:true,updatedAt:serverTimestamp(),updatedBy:migrationUid},{merge:true});
+    batch.set(doc(db,'trips',TRIP_ID),{airportReturnBookingV1:true,airportReturnBookingV2:true,updatedAt:serverTimestamp(),updatedBy:migrationUid},{merge:true});
     await batch.commit();
-    if(state.user?.uid===migrationUid){state.trip.airportReturnBookingV1=true;console.info('[BookingMigration] airport return booking ready',{created:!exists})}
+    if(state.user?.uid===migrationUid){state.trip.airportReturnBookingV1=true;state.trip.airportReturnBookingV2=true;console.info('[BookingMigration] airport return booking ready',{created:!exists})}
   })().catch(error=>console.warn('[BookingMigration] airport return booking failed',{code:firebaseErrorCode(error)})).finally(()=>{airportBookingMigrationPromise=null});
   return airportBookingMigrationPromise;
 }
 
 function render(){
   if(state.isAdmin&&state.days.length&&!returnHotelMigrationComplete)ensureReturnHotelPlan();
-  if(state.isAdmin&&state.trip&&!state.trip.airportReturnBookingV1)ensureAirportReturnBooking();
+  if(state.isAdmin&&state.trip&&!state.trip.airportReturnBookingV2)ensureAirportReturnBooking();
   if(state.page!=='more'){stopApprovalListener?.();stopApprovalListener=null}
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===state.page));
   const titles=state.language==='ko'?{today:'오늘',days:'일정',bookings:'예약',money:'환율',more:'더보기'}:{today:'今日',days:'行程',bookings:'預訂',money:'匯率',more:'更多'}; $('#pageTitle').textContent=titles[state.page];
