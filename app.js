@@ -701,8 +701,8 @@ function openDetail(item,isBooking=false){
   $('#detailPreviewNotice').textContent=t('部分網站基於安全設定不允許內嵌預覽。如未能顯示，請按下方按鈕開啟。','일부 웹사이트는 보안 설정으로 미리보기를 허용하지 않습니다. 표시되지 않으면 아래 버튼을 눌러 주세요.');
   $('#detailMap').title=previewUrl?t('網站／預訂預覽','웹사이트／예약 미리보기'):t('Google 地圖','Google 지도');
   $('#detailMap').src=previewUrl||`https://www.google.com/maps?q=${encodeURIComponent(query)}&hl=${state.language==='ko'?'ko':'zh-TW'}&output=embed`;
-  $('#openGoogleMaps').href=previewUrl||mapUrl;$('#openGoogleMaps').target=previewUrl?'_blank':'_self'; $('#openGoogleMaps').textContent=previewUrl?t('開啟網站／預訂','웹사이트／예약 열기'):t('在 Google 地圖開啟','Google 지도에서 열기'); $('#closeDetailBottom').textContent=t('關閉','닫기');
-  $('#openNaverMaps').classList.toggle('hidden',!!previewUrl);$('#openNaverMaps').href=naverMapUrl;$('#openNaverMaps').target='_self';$('#openNaverMaps').textContent=t('在 Naver Map 開啟','네이버 지도에서 열기');
+  $('#openGoogleMaps').href=previewUrl||mapUrl;$('#openGoogleMaps').target='_blank';$('#openGoogleMaps').rel='noopener noreferrer';$('#openGoogleMaps').textContent=previewUrl?t('開啟網站／預訂','웹사이트／예약 열기'):t('在 Google 地圖開啟','Google 지도에서 열기'); $('#closeDetailBottom').textContent=t('關閉','닫기');
+  $('#openNaverMaps').classList.toggle('hidden',!!previewUrl);$('#openNaverMaps').href=naverMapUrl;$('#openNaverMaps').target='_blank';$('#openNaverMaps').rel='noopener noreferrer';$('#openNaverMaps').textContent=t('在 Naver Map 開啟','네이버 지도에서 열기');
   $('#koreanHelper').classList.toggle('hidden',state.language!=='ko');
   $('#detailDialog').classList.remove('hidden'); $('#detailDialog').setAttribute('aria-hidden','false');
   document.body.classList.add('modal-open'); $('#closeDetail').focus();
@@ -712,6 +712,20 @@ function closeDetail(){
   $('#detailMap').removeAttribute('src'); $('#detailDialog').classList.add('hidden');
   $('#detailPreviewNotice').classList.add('hidden');
   $('#detailDialog').setAttribute('aria-hidden','true'); document.body.classList.remove('modal-open');
+}
+
+function repairViewportAfterResume(){
+  applyTheme();
+  const detail=$('#detailDialog');
+  document.body.classList.toggle('modal-open',!!detail&&!detail.classList.contains('hidden'));
+  const mainView=$('#mainView');
+  if(mainView&&!mainView.classList.contains('hidden')){
+    const scrollTop=content.scrollTop;
+    mainView.style.display='none';
+    void mainView.offsetHeight;
+    mainView.style.display='';
+    content.scrollTop=scrollTop;
+  }
 }
 
 function renderToday(){
@@ -1005,6 +1019,8 @@ $('#bookingSubItems').onclick=event=>{
 
 window.addEventListener('offline',()=>setSyncStatus('offline'));
 window.addEventListener('online',()=>{if(state.user&&state.trip)setSyncStatus('syncing')});
+window.addEventListener('pageshow',event=>{if(event.persisted)requestAnimationFrame(repairViewportAfterResume)});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')requestAnimationFrame(repairViewportAfterResume)});
 
 window.addEventListener('beforeinstallprompt',e=>{
   e.preventDefault(); installPrompt=e;

@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="首爾旅遊" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
   <title>首爾旅遊 2026</title>
-  <link rel="manifest" href="manifest.webmanifest?v=1.44" />
+  <link rel="manifest" href="manifest.webmanifest?v=1.45" />
   <script>
     (() => {
       const pref = localStorage.getItem('themePreference') || 'auto';
@@ -19,7 +19,7 @@
       document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=1.44" />
+  <link rel="stylesheet" href="styles.css?v=1.45" />
 </head>
 <body>
   <div id="app">
@@ -114,11 +114,11 @@
         <div id="detailIntro" class="detail-intro"></div>
         <div id="detailPreviewNotice" class="preview-notice hidden">部分網站基於安全設定不允許內嵌預覽。如未能顯示，請按下方按鈕開啟。</div>
         <iframe id="detailMap" class="detail-map" title="Google 地圖" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"></iframe>
-        <div class="detail-actions"><a id="openGoogleMaps" class="primary-btn map-open-btn" rel="noopener">在 Google 地圖開啟</a><a id="openNaverMaps" class="primary-btn map-open-btn naver-map-btn" rel="noopener">在 Naver Map 開啟</a><button id="closeDetailBottom" class="secondary-btn">關閉</button></div>
+        <div class="detail-actions"><a id="openGoogleMaps" class="primary-btn map-open-btn" rel="noopener noreferrer">在 Google 地圖開啟</a><a id="openNaverMaps" class="primary-btn map-open-btn naver-map-btn" rel="noopener noreferrer">在 Naver Map 開啟</a><button id="closeDetailBottom" class="secondary-btn">關閉</button></div>
       </div>
     </section>
   </div>
 
-  <script type="module" src="app.js?v=1.44"></script>
+  <script type="module" src="app.js?v=1.45"></script>
 </body>
 </html>
