@@ -175,6 +175,31 @@ function editorMapTarget(selector,label){return mapTargetValue($(selector).value
 function editorMapTargetElement(element,label){return mapTargetValue(element.value,label)}
 function googleMapOpenUrl(value){const url=externalUrl(value);if(!url)return '';try{const parsed=new URL(url);if(parsed.hostname==='maps.app.goo.gl'){parsed.search='';parsed.hash='';return parsed.href}return parsed.href}catch(error){return url}}
 function naverMapOpenUrl(value,fallback){const target=String(value||'').trim(),url=externalUrl(target);if(url)return url;return `https://map.naver.com/p/search/${encodeURIComponent(target||fallback)}`}
+const DEFAULT_NAVER_KOREAN_NAMES=[
+  ['New Blanc Central Myeongdong','뉴블랑 센트럴 명동'],['紐布朗中央明洞酒店','뉴블랑 센트럴 명동'],
+  ['明洞 Olive Young 旗艦店','올리브영 명동타운'],['Olive Young','올리브영 명동타운'],
+  ['仁川國際機場 T1','인천국제공항 제1여객터미널'],['仁川機場','인천국제공항 제1여객터미널'],
+  ['機場接送司機開始等候','인천국제공항 제1여객터미널'],['Trip.com 接送','인천국제공항 제1여객터미널'],
+  ['Check-in 後明洞晚餐','명동'],['Dookupsam','두껍삼 명동직영점'],['烏達里家','오다리집 명동점'],
+  ['Musoe','무쇠김치삼겹 명동점'],['無쇠','무쇠김치삼겹 명동점'],['무쇠','무쇠김치삼겹 명동점'],
+  ['自然島鹽可頌','자연도소금빵 익선점'],['韓屋 café','익선동 한옥카페'],['韓屋 cafe','익선동 한옥카페'],
+  ['益善洞韓屋村','익선동 한옥마을'],['廣藏市場','광장시장'],['安寧仁寺洞','안녕인사동'],
+  ['人人廣場','인사동마루'],['孔德市場豬腳一條街','공덕시장 족발골목'],
+  ['傳說中的馬鈴薯排骨湯','소문난성수감자탕'],['馬鈴薯排骨湯','소문난성수감자탕'],
+  ['聖水行 + café','성수동 카페거리'],['聖水行 + cafe','성수동 카페거리'],['聖水午餐','성수동'],
+  ['salt bread','자연도소금빵 성수점'],['首爾林公園','서울숲'],['首爾林','서울숲'],
+  ['陳玉華奶奶一隻雞','진옥화할매원조닭한마리'],['東大門設計廣場','동대문디자인플라자'],
+  ['興仁之門公園','흥인지문공원'],['mimiline','미미라인 동대문점'],['mimilne','미미라인 동대문점'],
+  ['nyunyu','뉴뉴 동대문'],['Team204','팀204'],['望遠市場','망원시장'],
+  ['弘大商業街','홍대 걷고싶은거리'],['延南洞','연남동'],['清溪川','청계천'],
+  ['抵達酒店','뉴블랑 센트럴 명동'],['酒店出門','뉴블랑 센트럴 명동'],['回酒店','뉴블랑 센트럴 명동'],
+  ['CX410','인천국제공항 제1여객터미널'],['CX411','인천국제공항 제1여객터미널'],
+  ['仁寺洞','인사동'],['孔德','공덕'],['東大門','동대문'],['明洞','명동'],['弘大','홍대']
+].sort((a,b)=>b[0].length-a[0].length);
+function defaultNaverKoreanName(...values){
+  const text=values.filter(Boolean).join(' ').toLocaleLowerCase();
+  return DEFAULT_NAVER_KOREAN_NAMES.find(([name])=>text.includes(name.toLocaleLowerCase()))?.[1]||'';
+}
 function mapTargetQuery(value,fallback){
   const target=String(value||'').trim();if(!target)return fallback;
   const url=externalUrl(target);if(!url)return target;
@@ -690,7 +715,7 @@ function openDetail(item,isBooking=false){
   const configuredTarget=item.mapTarget||item.googleMaps||'';
   const query=configuredTarget?mapTargetQuery(configuredTarget,item.mapQuery||title):`${item.mapQuery||title} Seoul`;
   const mapUrl=googleMapOpenUrl(configuredTarget)||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
-  const koreanQuery=item.naverQuery||item.titleKo||item.titleKorean||item.koreanName||item.nameKo||item.nameKorean||'';
+  const koreanQuery=item.naverQuery||item.titleKo||item.titleKorean||item.koreanName||item.nameKo||item.nameKorean||defaultNaverKoreanName(item.title,item.name,item.mapQuery,title);
   const naverMapUrl=naverMapOpenUrl(item.naverMapTarget||item.naverMaps||'',koreanQuery||query);
   const previewUrl=item.popupMode==='website'?externalUrl(item.website):'';
   $('#detailTitle').textContent=title;
