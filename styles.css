@@ -18,7 +18,7 @@
   --soft-text:#285b52;
   --input:#fffdf9;
   --topbar:rgba(247,242,233,.91);
-  --nav:rgba(247,242,233,.98);
+  --nav:#f7f2e9;
   --nav-safe:#f7f2e9;
   --nav-shadow:0 -8px 24px rgba(78,62,43,.08);
   --hero-start:#163747;
@@ -65,8 +65,8 @@ html[data-theme="night"]{
   --soft-text:#dbe4ff;
   --input:#151c2d;
   --topbar:rgba(8,17,38,.88);
-  --nav:rgba(15,21,36,.96);
-  --nav-safe:#081126;
+  --nav:#0f1524;
+  --nav-safe:#0f1524;
   --nav-shadow:0 -8px 26px rgba(0,0,0,.25);
   --hero-start:#202a40;
   --hero-end:#111827;
