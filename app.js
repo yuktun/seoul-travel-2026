@@ -128,7 +128,7 @@ function applyTheme(pref=getThemePreference()){
   document.documentElement.dataset.theme = effective;
   document.documentElement.style.colorScheme = effective === 'night' ? 'dark' : 'light';
   const meta = document.querySelector('#themeColorMeta');
-  if(meta) meta.setAttribute('content', effective === 'night' ? '#0b1020' : '#f5f6f8');
+  if(meta) meta.setAttribute('content', effective === 'night' ? '#081126' : '#f7f2e9');
   return effective;
 }
 
