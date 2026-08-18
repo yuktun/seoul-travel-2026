@@ -98,6 +98,7 @@ let stopTripListeners=[];
 let tripSyncTimer=null;
 let installPrompt=null;
 let editorContext=null;
+let photoUploadsInProgress=0;
 let accessInitialization=null;
 let accessRunId=0;
 let returnHotelMigrationPromise=null;
@@ -172,6 +173,37 @@ function imageUrl(value){try{const url=new URL(String(value||''));return url.pro
 function editorUrl(selector,label){const value=$(selector).value.trim();if(value&&!externalUrl(value))throw new Error(`${label}必須以 http:// 或 https:// 開始。`);return value}
 function editorImageUrlValue(value,label){value=String(value||'').trim();if(value&&!imageUrl(value))throw new Error(`${label}必須是有效的 HTTPS 網址。`);return value}
 function editorImageUrl(selector,label){return editorImageUrlValue($(selector).value,label)}
+function photoUploadFieldHtml(inputClass,value=''){
+  const safe=imageUrl(value);
+  return `<div class="photo-upload-field" data-photo-field><label>參考圖片網址<input class="form-input photo-url ${inputClass}" type="url" inputmode="url" autocapitalize="off" placeholder="https://res.cloudinary.com/..." value="${esc(value)}"><span class="muted small">可直接選擇照片，或貼上 HTTPS 圖片網址。</span></label><div class="photo-upload-actions"><button type="button" class="secondary-btn photo-upload-btn">📷 選擇照片／拍照</button><button type="button" class="admin-text-btn danger-text photo-remove-btn ${safe?'':'hidden'}">移除圖片</button><input class="photo-file-input hidden" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"></div><div class="photo-upload-status small muted" role="status"></div><div class="photo-editor-preview ${safe?'':'hidden'}"><img ${safe?`src="${esc(safe)}"`:''} alt="參考圖片預覽" referrerpolicy="no-referrer"></div></div>`;
+}
+function setPhotoFieldValue(field,value,status=''){
+  if(!field)return;const input=field.querySelector('.photo-url'),preview=field.querySelector('.photo-editor-preview'),img=preview.querySelector('img'),remove=field.querySelector('.photo-remove-btn'),safe=imageUrl(value);
+  input.value=value||'';field.querySelector('.photo-upload-status').textContent=status;remove.classList.toggle('hidden',!value);preview.classList.toggle('hidden',!safe);
+  if(safe)img.src=safe;else img.removeAttribute('src');
+}
+function cloudinaryConfig(){const config=state.trip?.photoUpload||{};return config.provider==='cloudinary'&&config.cloudName&&config.uploadPreset?config:null}
+function validPhotoFile(file){const type=String(file?.type||'').toLowerCase(),name=String(file?.name||'').toLowerCase();return ['image/jpeg','image/png','image/webp','image/heic','image/heif'].includes(type)||/\.(jpe?g|png|webp|heic|heif)$/.test(name)}
+function setPhotoUploadBusy(field,busy){
+  photoUploadsInProgress=Math.max(0,photoUploadsInProgress+(busy?1:-1));field.querySelector('.photo-upload-btn').disabled=busy;field.querySelector('.photo-file-input').disabled=busy;$('#saveEditor').disabled=photoUploadsInProgress>0;
+}
+async function uploadReferencePhoto(field,file){
+  if(!state.isAdmin||!file)return;
+  const status=field.querySelector('.photo-upload-status'),fileInput=field.querySelector('.photo-file-input'),config=cloudinaryConfig();
+  const reject=message=>{status.textContent=message;fileInput.value=''};
+  if(!navigator.onLine){reject('目前離線，請連線後再上載。');return}
+  if(!config){reject('請先到「更多」設定 Cloudinary 上載資料。');return}
+  if(!validPhotoFile(file)){reject('只接受 JPEG、PNG、WebP 或 HEIC 圖片。');return}
+  if(file.size>5*1024*1024){reject('圖片不可超過 5MB。');return}
+  const previous=field.querySelector('.photo-url').value;setPhotoUploadBusy(field,true);status.textContent='正在上載照片…';
+  try{
+    const body=new FormData();body.append('file',file);body.append('upload_preset',config.uploadPreset);
+    const response=await promiseWithTimeout(fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(config.cloudName)}/image/upload`,{method:'POST',body}),45000,'photo-upload-timeout','photo upload');
+    const result=await response.json().catch(()=>({}));if(!response.ok||!imageUrl(result.secure_url))throw new Error('upload-failed');
+    setPhotoFieldValue(field,result.secure_url,'✅ 照片已上載，請按「儲存」套用。');
+  }catch(error){setPhotoFieldValue(field,previous,'上載失敗，請檢查設定或稍後再試。');console.warn('[PhotoUpload] failed',{status:error?.message==='upload-failed'?'rejected':'network-error'})}
+  finally{fileInput.value='';setPhotoUploadBusy(field,false)}
+}
 function externalLinksHtml(item){const website=externalUrl(item?.website);return website?`<a class="link-btn" target="_blank" rel="noopener" href="${esc(website)}">網站／預訂</a>`:''}
 function mapTargetValue(value,label){value=String(value||'').trim();if(value.includes('://')&&!externalUrl(value))throw new Error(`${label}如使用連結，必須是有效的 http:// 或 https:// 連結。`);return value}
 function editorMapTarget(selector,label){return mapTargetValue($(selector).value,label)}
@@ -824,7 +856,7 @@ function renderBookings(){
 function showEditorError(message=''){$('#editorStatus').textContent=message}
 function editorUrlValue(value,label){value=String(value||'').trim();if(value&&!externalUrl(value))throw new Error(`${label}必須以 http:// 或 https:// 開始。`);return value}
 function eventPlaceRow(place={}){
-  return `<div class="event-place-row"><div class="event-place-names"><label>顯示名稱<input class="form-input place-name" placeholder="例如：Dookupsam（熟成豬）" value="${esc(place.name||'')}"></label><label>韓文名稱<input class="form-input place-name-ko" placeholder="例如：두껍삼" value="${esc(place.nameKo||'')}"></label></div><label>彈出視窗內容<select class="form-input place-popup"><option value="map" ${place.popupMode!=='website'?'selected':''}>地圖</option><option value="website" ${place.popupMode==='website'?'selected':''}>網站／預訂連結預覽</option></select></label><div class="event-place-links"><label>Google 地圖地點或連結<input class="form-input place-map-target" autocapitalize="off" placeholder="輸入地點，或貼上 Google 地圖連結" value="${esc(place.mapTarget||place.googleMaps||'')}"></label><label>Naver Map 地點或連結<input class="form-input place-naver-target" autocapitalize="off" placeholder="輸入韓文地點，或貼上 Naver Map 連結" value="${esc(place.naverMapTarget||place.naverMaps||'')}"></label><label>網站／預訂連結<input class="form-input place-website" type="url" inputmode="url" autocapitalize="off" placeholder="https://..." value="${esc(place.website||'')}"></label><label>參考圖片網址<input class="form-input place-image-url" type="url" inputmode="url" autocapitalize="off" placeholder="https://res.cloudinary.com/..." value="${esc(place.imageUrl||'')}"></label></div><div class="event-place-actions"><div class="event-place-order"><button type="button" class="admin-text-btn move-place-up">↑ 上移</button><button type="button" class="admin-text-btn move-place-down">↓ 下移</button></div><button type="button" class="admin-text-btn danger-text remove-place">移除</button></div></div>`;
+  return `<div class="event-place-row"><div class="event-place-names"><label>顯示名稱<input class="form-input place-name" placeholder="例如：Dookupsam（熟成豬）" value="${esc(place.name||'')}"></label><label>韓文名稱<input class="form-input place-name-ko" placeholder="例如：두껍삼" value="${esc(place.nameKo||'')}"></label></div><label>彈出視窗內容<select class="form-input place-popup"><option value="map" ${place.popupMode!=='website'?'selected':''}>地圖</option><option value="website" ${place.popupMode==='website'?'selected':''}>網站／預訂連結預覽</option></select></label><div class="event-place-links"><label>Google 地圖地點或連結<input class="form-input place-map-target" autocapitalize="off" placeholder="輸入地點，或貼上 Google 地圖連結" value="${esc(place.mapTarget||place.googleMaps||'')}"></label><label>Naver Map 地點或連結<input class="form-input place-naver-target" autocapitalize="off" placeholder="輸入韓文地點，或貼上 Naver Map 連結" value="${esc(place.naverMapTarget||place.naverMaps||'')}"></label><label>網站／預訂連結<input class="form-input place-website" type="url" inputmode="url" autocapitalize="off" placeholder="https://..." value="${esc(place.website||'')}"></label>${photoUploadFieldHtml('place-image-url',place.imageUrl)}</div><div class="event-place-actions"><div class="event-place-order"><button type="button" class="admin-text-btn move-place-up">↑ 上移</button><button type="button" class="admin-text-btn move-place-down">↓ 下移</button></div><button type="button" class="admin-text-btn danger-text remove-place">移除</button></div></div>`;
 }
 function addEventPlace(place={}){$('#eventPlaces').insertAdjacentHTML('beforeend',eventPlaceRow(place));updateEventPlaceButtons()}
 function updateEventPlaceButtons(){const rows=[...document.querySelectorAll('#eventPlaces .event-place-row')];rows.forEach((row,index)=>{row.querySelector('.move-place-up').disabled=index===0;row.querySelector('.move-place-down').disabled=index===rows.length-1})}
@@ -839,7 +871,7 @@ function openEventEditor(dayId,index=null){
   $('#eventTags').value=(event?.tags||[]).join('、');showEditorError();$('#itemEditorDialog').showModal();
   $('#eventPopupMode').value=event?.popupMode==='website'?'website':'map';
   $('#eventMapTarget').value=event?.mapTarget||event?.googleMaps||'';$('#eventNaverTarget').value=event?.naverMapTarget||event?.naverMaps||'';$('#eventWebsite').value=event?.website||'';
-  $('#eventImageUrl').value=event?.imageUrl||'';
+  setPhotoFieldValue($('#eventImageUrl').closest('[data-photo-field]'),event?.imageUrl||'');
   $('#eventPlaces').innerHTML='';eventPlaceItems(event||{}).forEach(addEventPlace);updateEventPlaceButtons();
 }
 function bookingDetailRow(row={},index=-1){
@@ -849,7 +881,7 @@ function addBookingDetail(row={},index=-1){
   $('#bookingDetails').insertAdjacentHTML('beforeend',bookingDetailRow(row,index));
 }
 function bookingSubItemRow(item={}){
-  return `<div class="event-place-row booking-sub-item-row"><div class="event-place-names"><label>顯示名稱<input class="form-input booking-item-name" placeholder="例如：接送集合地點" value="${esc(item.name||'')}"></label><label>韓文名稱<input class="form-input booking-item-name-ko" placeholder="選填" value="${esc(item.nameKo||'')}"></label></div><label>補充說明<textarea class="form-input booking-item-description" rows="2" placeholder="輸入說明、地址或注意事項">${esc(item.description||'')}</textarea></label><label>彈出視窗內容<select class="form-input booking-item-popup"><option value="map" ${item.popupMode!=='website'?'selected':''}>地圖</option><option value="website" ${item.popupMode==='website'?'selected':''}>網站／預訂連結預覽</option></select></label><label>Google 地圖地點或連結<input class="form-input booking-item-map-target" autocapitalize="off" placeholder="輸入地點，或貼上 Google 地圖連結" value="${esc(item.mapTarget||item.googleMaps||'')}"></label><label>Naver Map 地點或連結<input class="form-input booking-item-naver-target" autocapitalize="off" placeholder="輸入韓文地點，或貼上 Naver Map 連結" value="${esc(item.naverMapTarget||item.naverMaps||'')}"></label><label>網站／預訂連結<input class="form-input booking-item-website" type="url" inputmode="url" autocapitalize="off" placeholder="https://..." value="${esc(item.website||'')}"></label><label>參考圖片網址<input class="form-input booking-item-image-url" type="url" inputmode="url" autocapitalize="off" placeholder="https://res.cloudinary.com/..." value="${esc(item.imageUrl||'')}"></label><div class="event-place-actions"><div class="event-place-order"><button type="button" class="admin-text-btn move-booking-item-up">↑ 上移</button><button type="button" class="admin-text-btn move-booking-item-down">↓ 下移</button></div><button type="button" class="admin-text-btn danger-text remove-booking-item">移除</button></div></div>`;
+  return `<div class="event-place-row booking-sub-item-row"><div class="event-place-names"><label>顯示名稱<input class="form-input booking-item-name" placeholder="例如：接送集合地點" value="${esc(item.name||'')}"></label><label>韓文名稱<input class="form-input booking-item-name-ko" placeholder="選填" value="${esc(item.nameKo||'')}"></label></div><label>補充說明<textarea class="form-input booking-item-description" rows="2" placeholder="輸入說明、地址或注意事項">${esc(item.description||'')}</textarea></label><label>彈出視窗內容<select class="form-input booking-item-popup"><option value="map" ${item.popupMode!=='website'?'selected':''}>地圖</option><option value="website" ${item.popupMode==='website'?'selected':''}>網站／預訂連結預覽</option></select></label><label>Google 地圖地點或連結<input class="form-input booking-item-map-target" autocapitalize="off" placeholder="輸入地點，或貼上 Google 地圖連結" value="${esc(item.mapTarget||item.googleMaps||'')}"></label><label>Naver Map 地點或連結<input class="form-input booking-item-naver-target" autocapitalize="off" placeholder="輸入韓文地點，或貼上 Naver Map 連結" value="${esc(item.naverMapTarget||item.naverMaps||'')}"></label><label>網站／預訂連結<input class="form-input booking-item-website" type="url" inputmode="url" autocapitalize="off" placeholder="https://..." value="${esc(item.website||'')}"></label>${photoUploadFieldHtml('booking-item-image-url',item.imageUrl)}<div class="event-place-actions"><div class="event-place-order"><button type="button" class="admin-text-btn move-booking-item-up">↑ 上移</button><button type="button" class="admin-text-btn move-booking-item-down">↓ 下移</button></div><button type="button" class="admin-text-btn danger-text remove-booking-item">移除</button></div></div>`;
 }
 function addBookingSubItem(item={}){$('#bookingSubItems').insertAdjacentHTML('beforeend',bookingSubItemRow(item));updateBookingSubItemButtons()}
 function updateBookingSubItemButtons(){const rows=[...document.querySelectorAll('.booking-sub-item-row')];rows.forEach((row,index)=>{row.querySelector('.move-booking-item-up').disabled=index===0;row.querySelector('.move-booking-item-down').disabled=index===rows.length-1})}
@@ -862,13 +894,14 @@ function openBookingEditor(id=null){
   $('#bookingType').value=booking?.type||'';$('#bookingTitle').value=booking?.title||'';$('#bookingTitleKo').value=booking?.titleKo||booking?.titleKorean||booking?.koreanName||'';
   $('#bookingPopupMode').value=booking?.popupMode==='website'?'website':'map';
   $('#bookingMapTarget').value=booking?.mapTarget||booking?.googleMaps||'';$('#bookingNaverTarget').value=booking?.naverMapTarget||booking?.naverMaps||'';$('#bookingWebsite').value=booking?.website||'';
-  $('#bookingImageUrl').value=booking?.imageUrl||'';
+  setPhotoFieldValue($('#bookingImageUrl').closest('[data-photo-field]'),booking?.imageUrl||'');
   $('#bookingDetails').innerHTML='';(booking?.details||[{}]).forEach((row,index)=>addBookingDetail(row,booking?index:-1));
   $('#bookingSubItems').innerHTML='';(booking?.items||[]).forEach(addBookingSubItem);updateBookingSubItemButtons();
   showEditorError();$('#itemEditorDialog').showModal();
 }
 async function saveEditor(ev){
   ev.preventDefault();if(!state.isAdmin||!state.user||!editorContext)return;
+  if(photoUploadsInProgress){showEditorError('請等待照片上載完成。');return}
   const save=$('#saveEditor');save.disabled=true;save.textContent='正在儲存…';showEditorError();
   try{
     if(editorContext.kind==='event'){
@@ -950,6 +983,8 @@ function renderMore(){
   const trip=state.trip||{};
   const themePref=getThemePreference();
   const currentTheme=effectiveTheme(themePref);
+  const uploadConfig=trip.photoUpload||{};
+  const photoSettingsSection=state.isAdmin?`<div class="card"><h2>照片上載設定</h2><p class="muted small">設定一次後，管理員便可在行程及預訂編輯頁直接選擇照片。請勿在此輸入 Cloudinary API Secret。</p><form id="photoUploadSettings" class="photo-settings"><label>Cloudinary Cloud Name<input id="cloudinaryCloudName" class="form-input" autocapitalize="off" autocomplete="off" placeholder="例如：my-cloud" value="${esc(uploadConfig.cloudName||'')}"></label><label>Unsigned Upload Preset<input id="cloudinaryUploadPreset" class="form-input" autocapitalize="off" autocomplete="off" placeholder="例如：seoul_travel_photos" value="${esc(uploadConfig.uploadPreset||'')}"></label><div class="photo-settings-actions"><button id="savePhotoUploadSettings" class="primary-btn" type="submit">儲存上載設定</button><a class="link-btn" href="https://console.cloudinary.com/settings/upload/presets" target="_blank" rel="noopener noreferrer">開啟 Cloudinary 設定</a></div><div id="photoUploadSettingsStatus" class="small muted" role="status"></div></form><details><summary class="small">Cloudinary preset 設定步驟</summary><ol class="photo-setup-steps small muted"><li>建立 unsigned upload preset，folder 設為 <code>seoul-travel-2026</code>。</li><li>限制 JPEG、PNG、WebP、HEIC／HEIF，最大 5MB。</li><li>加入 limit transformation，最長邊設為 1600px。</li><li>停用自訂 public ID及覆寫。</li></ol></details></div>`:'';
   const importSection=state.isAdmin?`<div class="card"><h2>匯入私人行程資料</h2><p class="muted">選擇由我提供的 <code>seoul-private-data.json</code>。資料會直接寫入你登入帳戶可存取的 Firestore；JSON 不需要上載到 GitHub。</p><label class="file-label">選擇私人 JSON<input id="importFile" type="file" accept="application/json"></label><div id="importStatus" class="small muted" style="margin-top:10px"></div></div>`:'';
   content.innerHTML=`${state.isAdmin?'<div class="card"><h2>加入申請</h2><div id="approvalStatus" class="small approval-status" role="status" aria-live="polite"></div><div id="approvalList" class="approval-list"><span class="muted small">正在載入…</span></div></div>':''}<div class="card"><h2>外觀</h2><p class="muted small">預設為自動，會跟隨手機或電腦的系統外觀。你亦可以固定使用日間或夜間模式。</p>
   <div class="theme-options" role="group" aria-label="外觀模式">
@@ -959,14 +994,28 @@ function renderMore(){
   </div>
   <div class="theme-status">偏好：${themePreferenceLabel(themePref)} · 目前：${effectiveThemeLabel(currentTheme)}</div></div>
   <div class="card"><h2>快速資訊</h2><div class="kv"><div>旅程</div><div>${esc(trip.title||'首爾旅遊 2026')}</div><div>日期</div><div>${esc(trip.dateRange||'2026/8/19–8/23')}</div><div>人數</div><div>${esc(trip.travellers||'4')}</div></div></div>
+  ${photoSettingsSection}
   ${importSection}
   <div class="card"><h2>安全提醒</h2><div class="notice good">網站程式碼不包含旅客姓名、電子機票號碼、預訂編號等私人資料；這些資料只會在匯入後存入 Firestore。</div></div>
   <div class="card install-card"><h2>加入主畫面</h2><p class="muted">把首爾旅遊 App 加到手機主畫面，之後可以像一般 App 一樣快速開啟。</p><button id="installAppBtn" class="primary-btn full" ${isStandalone()?'disabled':''}>${installButtonLabel()}</button></div>`;
   document.querySelectorAll('[data-theme-pref]').forEach(btn=>btn.onclick=()=>setThemePreference(btn.dataset.themePref));
   const importFile=$('#importFile');
   if(importFile) importFile.onchange=importPrivateData;
+  const photoSettings=$('#photoUploadSettings');
+  if(photoSettings)photoSettings.onsubmit=savePhotoUploadSettings;
   $('#installAppBtn').onclick=installApp;
   if(state.isAdmin) renderApprovalRequests();
+}
+
+async function savePhotoUploadSettings(event){
+  event.preventDefault();if(!state.isAdmin||!state.user)return;
+  const cloudName=$('#cloudinaryCloudName').value.trim(),uploadPreset=$('#cloudinaryUploadPreset').value.trim(),status=$('#photoUploadSettingsStatus'),button=$('#savePhotoUploadSettings');
+  if((cloudName&&!uploadPreset)||(!cloudName&&uploadPreset)){status.textContent='請同時輸入 Cloud Name及 Upload Preset。';return}
+  if(cloudName&&!/^[a-z0-9][a-z0-9_-]{1,62}$/i.test(cloudName)){status.textContent='Cloud Name 格式不正確。';return}
+  if(uploadPreset&&!/^[a-z0-9][a-z0-9_-]{0,99}$/i.test(uploadPreset)){status.textContent='Upload Preset 格式不正確。';return}
+  const photoUpload=cloudName?{provider:'cloudinary',cloudName,uploadPreset}:null;button.disabled=true;status.textContent='正在儲存設定…';
+  try{await setDoc(doc(db,'trips',TRIP_ID),{photoUpload,updatedAt:serverTimestamp(),updatedBy:state.user.uid},{merge:true});state.trip={...(state.trip||{}),photoUpload};status.textContent=photoUpload?'✅ 上載設定已儲存。':'✅ 上載設定已清除。'}
+  catch(error){status.textContent='儲存失敗，請稍後再試。'}finally{button.disabled=false}
 }
 
 async function installApp(){
@@ -1062,6 +1111,16 @@ $('#bookingSubItems').onclick=event=>{
   else if(event.target.closest('.move-booking-item-down'))row.nextElementSibling?.after(row);
   updateBookingSubItemButtons();
 };
+$('#itemEditorDialog').addEventListener('click',event=>{
+  const field=event.target.closest('[data-photo-field]');if(!field)return;
+  if(event.target.closest('.photo-upload-btn'))field.querySelector('.photo-file-input').click();
+  else if(event.target.closest('.photo-remove-btn'))setPhotoFieldValue(field,'','圖片已從項目移除；請按「儲存」套用。');
+});
+$('#itemEditorDialog').addEventListener('change',event=>{
+  const field=event.target.closest('[data-photo-field]');if(!field)return;
+  if(event.target.matches('.photo-file-input')){const file=event.target.files?.[0];if(file)uploadReferencePhoto(field,file)}
+  else if(event.target.matches('.photo-url'))setPhotoFieldValue(field,event.target.value.trim());
+});
 
 window.addEventListener('offline',()=>setSyncStatus('offline'));
 window.addEventListener('online',()=>{if(state.user&&state.trip)setSyncStatus('syncing')});

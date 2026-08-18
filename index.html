@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="首爾旅遊" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
   <title>首爾旅遊 2026</title>
-  <link rel="manifest" href="manifest.webmanifest?v=1.52" />
+  <link rel="manifest" href="manifest.webmanifest?v=1.53" />
   <script>
     (() => {
       const pref = localStorage.getItem('themePreference') || 'auto';
@@ -19,7 +19,7 @@
       document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=1.52" />
+  <link rel="stylesheet" href="styles.css?v=1.53" />
 </head>
 <body>
   <div id="app">
@@ -88,7 +88,7 @@
           <label>Google 地圖地點或連結<input id="eventMapTarget" class="form-input" autocapitalize="off" placeholder="例如：仁川國際機場 T1，或貼上 Google 地圖連結"><span class="muted small">留空時會使用行程名稱搜尋。</span></label>
           <label>Naver Map 地點或連結<input id="eventNaverTarget" class="form-input" autocapitalize="off" placeholder="例如：인천국제공항 제1여객터미널，或貼上 Naver Map 連結"><span class="muted small">留空時會優先使用上方韓文名稱搜尋。</span></label>
           <label>網站／預訂連結<input id="eventWebsite" class="form-input" type="url" inputmode="url" autocapitalize="off" placeholder="https://..."></label>
-          <label>參考圖片網址<input id="eventImageUrl" class="form-input" type="url" inputmode="url" autocapitalize="off" placeholder="https://res.cloudinary.com/..."><span class="muted small">只接受 HTTPS 圖片網址；圖片只會在彈出視窗開啟時載入。</span></label>
+          <div class="photo-upload-field" data-photo-field><label>參考圖片網址<input id="eventImageUrl" class="form-input photo-url" type="url" inputmode="url" autocapitalize="off" placeholder="https://res.cloudinary.com/..."><span class="muted small">可直接選擇照片，或貼上 HTTPS 圖片網址。</span></label><div class="photo-upload-actions"><button type="button" class="secondary-btn photo-upload-btn">📷 選擇照片／拍照</button><button type="button" class="admin-text-btn danger-text photo-remove-btn hidden">移除圖片</button><input class="photo-file-input hidden" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"></div><div class="photo-upload-status small muted" role="status"></div><div class="photo-editor-preview hidden"><img alt="參考圖片預覽" referrerpolicy="no-referrer"></div></div>
           <div>
             <div class="editor-field-head"><div><strong>行程小項目</strong><div class="muted small">可編輯顯示名稱、韓文名稱及每個項目的連結。</div></div><button id="addEventPlace" type="button" class="secondary-btn small">＋ 新增小項目</button></div>
             <div id="eventPlaces" class="event-places-editor"></div>
@@ -102,7 +102,7 @@
           <label>Google 地圖地點或連結<input id="bookingMapTarget" class="form-input" autocapitalize="off" placeholder="例如：明洞某酒店，或貼上 Google 地圖連結"><span class="muted small">留空時會使用預訂名稱搜尋。</span></label>
           <label>Naver Map 地點或連結<input id="bookingNaverTarget" class="form-input" autocapitalize="off" placeholder="輸入韓文地點，或貼上 Naver Map 連結"><span class="muted small">留空時會優先使用上方韓文名稱搜尋。</span></label>
           <label>網站／預訂連結<input id="bookingWebsite" class="form-input" type="url" inputmode="url" autocapitalize="off" placeholder="https://..."></label>
-          <label>參考圖片網址<input id="bookingImageUrl" class="form-input" type="url" inputmode="url" autocapitalize="off" placeholder="https://res.cloudinary.com/..."><span class="muted small">只接受 HTTPS 圖片網址；圖片只會在彈出視窗開啟時載入。</span></label>
+          <div class="photo-upload-field" data-photo-field><label>參考圖片網址<input id="bookingImageUrl" class="form-input photo-url" type="url" inputmode="url" autocapitalize="off" placeholder="https://res.cloudinary.com/..."><span class="muted small">可直接選擇照片，或貼上 HTTPS 圖片網址。</span></label><div class="photo-upload-actions"><button type="button" class="secondary-btn photo-upload-btn">📷 選擇照片／拍照</button><button type="button" class="admin-text-btn danger-text photo-remove-btn hidden">移除圖片</button><input class="photo-file-input hidden" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"></div><div class="photo-upload-status small muted" role="status"></div><div class="photo-editor-preview hidden"><img alt="參考圖片預覽" referrerpolicy="no-referrer"></div></div>
           <div><div class="editor-field-head"><strong>詳細資料</strong><button id="addBookingDetail" type="button" class="secondary-btn small">＋ 新增一行</button></div><div id="bookingDetails" class="booking-details-editor"></div></div>
           <div><div class="editor-field-head"><div><strong>預訂小項目</strong><div class="muted small">可加入補充說明、地圖或網站連結。</div></div><button id="addBookingSubItem" type="button" class="secondary-btn small">＋ 新增小項目</button></div><div id="bookingSubItems" class="event-places-editor"></div></div>
         </div>
@@ -124,6 +124,6 @@
     </section>
   </div>
 
-  <script type="module" src="app.js?v=1.52"></script>
+  <script type="module" src="app.js?v=1.53"></script>
 </body>
 </html>
